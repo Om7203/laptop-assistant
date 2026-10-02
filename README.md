@@ -19,10 +19,11 @@ This is deliberately not an unrestricted shell. New capabilities should be added
 ## Run it
 
 1. Install Node.js 22 or newer.
-2. Copy `.env.example` to `.env`.
-3. Put your OpenAI API key in `.env`.
-4. Run `npm start`.
-5. Open `http://localhost:3199` and select **Connect voice**.
+2. Right-click `setup.ps1`, choose **Run with PowerShell**, and enter your OpenAI API key when asked.
+3. Double-click `start-assistant.cmd`.
+4. Select **Connect voice** and allow microphone access.
+
+Developers can instead copy `.env.example` to `.env` and run `npm start`.
 
 No package installation is required for this milestone.
 
