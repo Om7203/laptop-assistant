@@ -66,7 +66,12 @@ server.listen(port, host, () => {
 
 async function createRealtimeSession(request, response) {
   const apiKey = openaiApiKey;
-  if (!apiKey) return json(response, 503, { error: "missing_api_key", message: "Add OPENAI_API_KEY to .env first." });
+  if (!apiKey) {
+    return json(response, 503, {
+      error: "missing_api_key",
+      message: "The encrypted API key was not loaded. Close the assistant and run start-assistant.cmd again.",
+    });
+  }
 
   const sdp = await readBody(request, 1_000_000);
   const session = {

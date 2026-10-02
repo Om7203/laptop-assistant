@@ -23,6 +23,8 @@ This is deliberately not an unrestricted shell. New capabilities should be added
 3. Double-click `start-assistant.cmd`.
 4. Select **Connect voice** and allow microphone access.
 
+The launcher decrypts the credential inside PowerShell, passes it only to the local server process, waits for a healthy startup, and then opens the interface. If an older assistant server is running without a credential, the launcher restarts that server automatically.
+
 Developers can instead provide `OPENAI_API_KEY` as a process environment variable and run `npm start`.
 
 No package installation is required for this milestone.
