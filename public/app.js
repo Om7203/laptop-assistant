@@ -54,15 +54,29 @@ async function connect() {
     if (!sessionResponse.ok) {
       const contentType = sessionResponse.headers.get("content-type") || "";
       const detail = contentType.includes("json") ? await sessionResponse.json() : { message: await sessionResponse.text() };
-      throw new Error(detail.message || "Could not start the voice session.");
+      throw new Error(detail.message || detail.error?.message || detail.error?.code || "Could not start the voice session.");
     }
 
     await peerConnection.setRemoteDescription({ type: "answer", sdp: await sessionResponse.text() });
   } catch (error) {
-    addMessage("assistant", `Connection failed: ${error.message}`);
-    logActivity(`Connection failed: ${error.message}`);
+    const message = friendlyConnectionError(error);
+    addMessage("assistant", `Connection failed: ${message}`);
+    logActivity(`Connection failed: ${message}`);
     disconnect();
   }
+}
+
+function friendlyConnectionError(error) {
+  if (error?.name === "NotAllowedError") {
+    return "Microphone access was blocked. Allow microphone access for 127.0.0.1, then try again.";
+  }
+  if (error?.name === "NotFoundError") {
+    return "No microphone was found. Connect or enable a microphone, then try again.";
+  }
+  if (error?.name === "NotReadableError") {
+    return "The microphone is busy or unavailable. Close other apps using it, then try again.";
+  }
+  return error?.message || "Could not start the voice session.";
 }
 
 function disconnect(log = true) {

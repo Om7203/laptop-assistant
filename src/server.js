@@ -19,6 +19,7 @@ const allowedRoots = (process.env.ASSISTANT_ALLOWED_ROOTS ?? "")
   .map((item) => item.trim())
   .filter(Boolean);
 const runtime = new ToolRuntime({ projectRoot, allowedRoots });
+let lastSessionError = null;
 
 const server = http.createServer(async (request, response) => {
   try {
@@ -29,6 +30,7 @@ const server = http.createServer(async (request, response) => {
         status: "ok",
         realtime_configured: Boolean(openaiApiKey),
         model: process.env.OPENAI_REALTIME_MODEL || "gpt-realtime-2.1",
+        last_session_error: lastSessionError,
       });
     }
 
@@ -107,11 +109,29 @@ async function createRealtimeSession(request, response) {
   });
 
   const body = await upstream.text();
+  if (!upstream.ok) {
+    lastSessionError = sanitizeUpstreamError(upstream.status, body);
+    console.error("Realtime session creation failed:", lastSessionError);
+  } else {
+    lastSessionError = null;
+  }
   response.statusCode = upstream.status;
   response.setHeader("Content-Type", upstream.headers.get("content-type") || "application/sdp");
   const location = upstream.headers.get("location");
   if (location) response.setHeader("X-Realtime-Location", location);
   response.end(body);
+}
+
+function sanitizeUpstreamError(status, body) {
+  let parsed;
+  try { parsed = JSON.parse(body); } catch { parsed = null; }
+  const error = parsed?.error ?? parsed;
+  return {
+    status,
+    code: typeof error?.code === "string" ? error.code : null,
+    type: typeof error?.type === "string" ? error.type : null,
+    message: typeof error?.message === "string" ? error.message.slice(0, 500) : `OpenAI returned HTTP ${status}.`,
+  };
 }
 
 async function serveStatic(request, response) {

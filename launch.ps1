@@ -47,6 +47,23 @@ function Get-AssistantListenerProcess {
     return Get-Process -Id $ownerProcessId -ErrorAction SilentlyContinue
 }
 
+function Open-AssistantWindow {
+    $chromeCandidates = @(
+        @(
+            (Join-Path $env:ProgramFiles "Google\Chrome\Application\chrome.exe"),
+            (Join-Path ${env:ProgramFiles(x86)} "Google\Chrome\Application\chrome.exe"),
+            (Join-Path $env:LOCALAPPDATA "Google\Chrome\Application\chrome.exe")
+        ) | Where-Object { $_ -and (Test-Path -LiteralPath $_) }
+    )
+
+    if ($chromeCandidates.Count -gt 0) {
+        Start-Process -FilePath $chromeCandidates[0] -ArgumentList @("--app=$assistantUrl", "--start-maximized")
+        return
+    }
+
+    Start-Process $assistantUrl
+}
+
 if (-not $env:OPENAI_API_KEY -and -not (Test-Path -LiteralPath $credentialFile)) {
     Write-Host "First-time setup is required." -ForegroundColor Cyan
     & $setupScript
@@ -62,7 +79,7 @@ if ([string]::IsNullOrWhiteSpace($env:OPENAI_API_KEY)) {
 
 $existingHealth = Get-AssistantHealth
 if ($existingHealth -and $existingHealth.realtime_configured) {
-    Start-Process $assistantUrl
+    Open-AssistantWindow
     exit 0
 }
 
@@ -97,4 +114,4 @@ if (-not $health.realtime_configured) {
     throw "The server started but did not receive the API key. Run setup.ps1 again."
 }
 
-Start-Process $assistantUrl
+Open-AssistantWindow

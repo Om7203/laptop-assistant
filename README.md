@@ -20,7 +20,7 @@ This is deliberately not an unrestricted shell. New capabilities should be added
 
 1. Install Node.js 22 or newer.
 2. Right-click `setup.ps1`, choose **Run with PowerShell**, and enter your OpenAI API key when asked. The key entry stays visually blank.
-3. Double-click `start-assistant.cmd`.
+3. Double-click `start-assistant.cmd`. When Google Chrome is installed, the launcher opens the assistant in a standalone app-style window without normal browser tabs or an address bar. It falls back to the default browser otherwise.
 4. Select **Connect voice** and allow microphone access.
 
 The launcher decrypts the credential inside PowerShell, passes it only to the local server process, waits for a healthy startup, and then opens the interface. If an older assistant server is running without a credential, the launcher restarts that server automatically.
@@ -28,6 +28,10 @@ The launcher decrypts the credential inside PowerShell, passes it only to the lo
 Developers can instead provide `OPENAI_API_KEY` as a process environment variable and run `npm start`.
 
 No package installation is required for this milestone.
+
+The interface is served only from `127.0.0.1`, so it is a local application page rather than a public website. The local server must stay running while the window is open.
+
+If voice does not connect, read the exact message in the conversation or Activity panel. Microphone permission can be changed in Chrome under **Settings → Privacy and security → Site settings → Microphone**. A service-side failure now reports the message returned by OpenAI instead of only showing a generic connection error.
 
 ## Example requests
 
