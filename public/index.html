@@ -19,14 +19,14 @@
         </div>
         <div class="connection">
           <span id="status-dot" class="status-dot"></span>
-          <span id="status-label">Offline</span>
-          <button id="connect-button" class="primary">Connect voice</button>
+          <span id="status-label">Checking local AI…</span>
+          <button id="connect-button" class="primary" disabled>Local voice next</button>
         </div>
       </header>
 
       <section class="hero">
         <div>
-          <p class="eyebrow">VOICE + SAFE ACTIONS</p>
+          <p class="eyebrow">LOCAL AI + SAFE ACTIONS</p>
           <h2>Ask naturally. Stay in control.</h2>
           <p class="lede">The assistant can answer, report progress, and use approved tools on this laptop. Sensitive actions wait for you.</p>
         </div>
@@ -40,13 +40,13 @@
           <div id="conversation" class="conversation" aria-live="polite">
             <article class="message assistant">
               <span class="message-label">ASSISTANT</span>
-              <p>I’m ready. Connect voice, then speak or type a request.</p>
+              <p>I’m ready. Type a request while local voice is being added.</p>
             </article>
           </div>
           <form id="command-form" class="composer">
             <label class="sr-only" for="command-input">Type a command</label>
-            <input id="command-input" autocomplete="off" placeholder="Type a command…" disabled />
-            <button type="submit" disabled>Send</button>
+            <input id="command-input" autocomplete="off" placeholder="Type a command…" />
+            <button type="submit">Send</button>
           </form>
         </div>
 

@@ -13,12 +13,16 @@ let peerConnection;
 let dataChannel;
 let microphoneStream;
 let assistantDraft = "";
+let openAIRealtimeAvailable = false;
+
+checkLocalBackend();
 
 connectButton.addEventListener("click", () => (peerConnection ? disconnect() : connect()));
 commandForm.addEventListener("submit", sendTextCommand);
 clearActivity.addEventListener("click", () => (activity.innerHTML = ""));
 
 async function connect() {
+  if (!openAIRealtimeAvailable) return;
   setConnectionState("connecting", "Connecting…");
   connectButton.disabled = true;
 
@@ -91,23 +95,51 @@ function disconnect(log = true) {
   setConnectionState("offline", "Offline");
   connectButton.textContent = "Connect voice";
   connectButton.disabled = false;
-  commandInput.disabled = true;
-  sendButton.disabled = true;
+  commandInput.disabled = false;
+  sendButton.disabled = false;
   if (log) logActivity("Voice session disconnected");
 }
 
-function sendTextCommand(event) {
+async function sendTextCommand(event) {
   event.preventDefault();
   const text = commandInput.value.trim();
-  if (!text || dataChannel?.readyState !== "open") return;
+  if (!text) return;
 
   addMessage("user", text);
-  dataChannel.send(JSON.stringify({
-    type: "conversation.item.create",
-    item: { type: "message", role: "user", content: [{ type: "input_text", text }] },
-  }));
-  dataChannel.send(JSON.stringify({ type: "response.create" }));
   commandInput.value = "";
+
+  if (dataChannel?.readyState === "open") {
+    dataChannel.send(JSON.stringify({
+      type: "conversation.item.create",
+      item: { type: "message", role: "user", content: [{ type: "input_text", text }] },
+    }));
+    dataChannel.send(JSON.stringify({ type: "response.create" }));
+    return;
+  }
+
+  await sendLocalCommand(text);
+}
+
+async function sendLocalCommand(text) {
+  commandInput.disabled = true;
+  sendButton.disabled = true;
+  logActivity("Local model is thinking");
+  try {
+    let result = await postJson("/api/chat", { message: text });
+    while (result.status === "approval_required") {
+      logActivity(`Approval requested: ${result.summary}`);
+      result = await waitForApproval(result, true);
+    }
+    addMessage("assistant", result.message || "Done.");
+    logActivity(`Answered locally with ${result.model || "Ollama"}`);
+  } catch (error) {
+    addMessage("assistant", `Local assistant error: ${error.message}`);
+    logActivity(`Local assistant error: ${error.message}`);
+  } finally {
+    commandInput.disabled = false;
+    sendButton.disabled = false;
+    commandInput.focus();
+  }
 }
 
 async function handleRealtimeEvent(event) {
@@ -151,7 +183,7 @@ async function handleToolCall(event) {
   }
 }
 
-function waitForApproval(request) {
+function waitForApproval(request, localChat = false) {
   return new Promise((resolve) => {
     const card = document.createElement("section");
     card.className = "approval";
@@ -168,7 +200,8 @@ function waitForApproval(request) {
     const decide = async (decision) => {
       card.querySelectorAll("button").forEach((button) => (button.disabled = true));
       try {
-        const result = await postJson(`/api/approvals/${request.approval_id}`, { decision });
+        const endpoint = localChat ? `/api/chat/approvals/${request.approval_id}` : `/api/approvals/${request.approval_id}`;
+        const result = await postJson(endpoint, { decision });
         card.remove();
         resolve(result);
       } catch (error) {
@@ -246,6 +279,29 @@ function logActivity(text) {
 function setConnectionState(state, label) {
   statusLabel.textContent = label;
   statusDot.classList.toggle("live", state === "connected");
+}
+
+async function checkLocalBackend() {
+  try {
+    const health = await fetch("/api/health").then((response) => response.json());
+    openAIRealtimeAvailable = Boolean(health.realtime_configured);
+    connectButton.disabled = !openAIRealtimeAvailable;
+    connectButton.textContent = openAIRealtimeAvailable ? "Connect voice" : "Local voice next";
+
+    const local = await fetch("/api/ollama/status").then((response) => response.json());
+    if (!local.reachable) {
+      setConnectionState("offline", "Ollama offline");
+      logActivity(local.message || "Ollama is offline");
+    } else if (!local.model_available) {
+      setConnectionState("offline", "Model missing");
+      logActivity(`Install ${local.model} on the Ollama server`);
+    } else {
+      setConnectionState("connected", `Local · ${local.model}`);
+      logActivity(`Local model ready: ${local.model}`);
+    }
+  } catch {
+    setConnectionState("offline", "Local server error");
+  }
 }
 
 function friendlyName(name = "tool") {

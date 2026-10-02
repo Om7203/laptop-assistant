@@ -3,13 +3,15 @@ import fsp from "node:fs/promises";
 import http from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { OllamaAssistant } from "./ollama.js";
 import { resolveOpenAIKey } from "./secrets.js";
 import { TOOL_DEFINITIONS, ToolError, ToolRuntime } from "./tools.js";
 
 const sourceDirectory = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(sourceDirectory, "..");
 loadEnv(path.join(projectRoot, ".env"));
-const openaiApiKey = resolveOpenAIKey({ projectRoot });
+const enableOpenAIRealtime = process.env.ENABLE_OPENAI_REALTIME === "true";
+const openaiApiKey = enableOpenAIRealtime ? resolveOpenAIKey({ projectRoot }) : "";
 
 const publicRoot = path.join(projectRoot, "public");
 const port = numberFromEnv(process.env.PORT, 3199);
@@ -19,6 +21,11 @@ const allowedRoots = (process.env.ASSISTANT_ALLOWED_ROOTS ?? "")
   .map((item) => item.trim())
   .filter(Boolean);
 const runtime = new ToolRuntime({ projectRoot, allowedRoots });
+const localAssistant = new OllamaAssistant({
+  runtime,
+  baseUrl: process.env.OLLAMA_BASE_URL || "http://127.0.0.1:11434",
+  model: process.env.OLLAMA_MODEL || "qwen3:4b",
+});
 let lastSessionError = null;
 
 const server = http.createServer(async (request, response) => {
@@ -28,10 +35,34 @@ const server = http.createServer(async (request, response) => {
     if (request.method === "GET" && request.url === "/api/health") {
       return json(response, 200, {
         status: "ok",
-        realtime_configured: Boolean(openaiApiKey),
+        api_version: 2,
+        backend: "ollama",
+        ollama_model: localAssistant.model,
+        realtime_configured: enableOpenAIRealtime && Boolean(openaiApiKey),
         model: process.env.OPENAI_REALTIME_MODEL || "gpt-realtime-2.1",
         last_session_error: lastSessionError,
       });
+    }
+
+    if (request.method === "GET" && request.url === "/api/ollama/status") {
+      return json(response, 200, await localAssistant.status());
+    }
+
+    if (request.method === "POST" && request.url === "/api/chat") {
+      const payload = await readJson(request);
+      return json(response, 200, await localAssistant.send(payload.message));
+    }
+
+    if (request.method === "POST" && request.url === "/api/chat/reset") {
+      localAssistant.reset();
+      return json(response, 200, { status: "completed" });
+    }
+
+    const chatApprovalMatch = request.url?.match(/^\/api\/chat\/approvals\/([0-9a-f-]+)$/i);
+    if (request.method === "POST" && chatApprovalMatch) {
+      const payload = await readJson(request);
+      const result = await localAssistant.decide(chatApprovalMatch[1], payload.decision === "approve");
+      return json(response, 200, result);
     }
 
     if (request.method === "POST" && request.url === "/session") {
@@ -63,7 +94,8 @@ const server = http.createServer(async (request, response) => {
 
 server.listen(port, host, () => {
   console.log(`Laptop Assistant is ready at http://${host}:${port}`);
-  if (!openaiApiKey) console.log("Voice is disabled until setup.ps1 stores an encrypted API key.");
+  console.log(`Local AI: ${localAssistant.model} at ${localAssistant.baseUrl}`);
+  if (!enableOpenAIRealtime) console.log("Paid OpenAI Realtime voice is disabled; local text mode is active.");
 });
 
 async function createRealtimeSession(request, response) {

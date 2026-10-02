@@ -1,24 +1,8 @@
 $ErrorActionPreference = "Stop"
 
 $projectDirectory = Split-Path -Parent $MyInvocation.MyCommand.Path
-$credentialFile = Join-Path $projectDirectory "config\openai-key.dpapi"
-$setupScript = Join-Path $projectDirectory "setup.ps1"
 $serverScript = Join-Path $projectDirectory "src\server.js"
 $assistantUrl = "http://127.0.0.1:3199"
-
-function Read-EncryptedApiKey {
-    param([Parameter(Mandatory = $true)][string]$Path)
-
-    $encrypted = [System.IO.File]::ReadAllText($Path)
-    $secure = ConvertTo-SecureString $encrypted
-    $pointer = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secure)
-    try {
-        return [Runtime.InteropServices.Marshal]::PtrToStringBSTR($pointer)
-    }
-    finally {
-        [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($pointer)
-    }
-}
 
 function Get-AssistantHealth {
     try {
@@ -64,21 +48,8 @@ function Open-AssistantWindow {
     Start-Process $assistantUrl
 }
 
-if (-not $env:OPENAI_API_KEY -and -not (Test-Path -LiteralPath $credentialFile)) {
-    Write-Host "First-time setup is required." -ForegroundColor Cyan
-    & $setupScript
-}
-
-if (-not $env:OPENAI_API_KEY) {
-    $env:OPENAI_API_KEY = Read-EncryptedApiKey -Path $credentialFile
-}
-
-if ([string]::IsNullOrWhiteSpace($env:OPENAI_API_KEY)) {
-    throw "The encrypted API key could not be loaded. Run setup.ps1 again."
-}
-
 $existingHealth = Get-AssistantHealth
-if ($existingHealth -and $existingHealth.realtime_configured) {
+if ($existingHealth -and $existingHealth.api_version -eq 2) {
     Open-AssistantWindow
     exit 0
 }
@@ -96,7 +67,6 @@ if ($existingHealth) {
 }
 
 $serverProcess = Start-Process -FilePath "node.exe" -ArgumentList @($serverScript) -WorkingDirectory $projectDirectory -WindowStyle Hidden -PassThru
-$env:OPENAI_API_KEY = $null
 
 $health = $null
 for ($attempt = 0; $attempt -lt 40; $attempt++) {
@@ -109,9 +79,4 @@ for ($attempt = 0; $attempt -lt 40; $attempt++) {
 if (-not $health) {
     throw "The local assistant server did not start."
 }
-if (-not $health.realtime_configured) {
-    Stop-Process -Id $serverProcess.Id -Force -ErrorAction SilentlyContinue
-    throw "The server started but did not receive the API key. Run setup.ps1 again."
-}
-
 Open-AssistantWindow
