@@ -1,0 +1,15 @@
+{
+  "name": "laptop-assistant",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A permissioned realtime voice assistant for Windows.",
+  "type": "module",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "test": "node test/tools.test.js"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

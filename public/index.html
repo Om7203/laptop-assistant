@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark" />
+    <title>Laptop Assistant</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <header class="topbar">
+        <div class="brand">
+          <span class="orb" aria-hidden="true"></span>
+          <div>
+            <p class="eyebrow">LOCAL CONTROL</p>
+            <h1>Laptop Assistant</h1>
+          </div>
+        </div>
+        <div class="connection">
+          <span id="status-dot" class="status-dot"></span>
+          <span id="status-label">Offline</span>
+          <button id="connect-button" class="primary">Connect voice</button>
+        </div>
+      </header>
+
+      <section class="hero">
+        <div>
+          <p class="eyebrow">VOICE + SAFE ACTIONS</p>
+          <h2>Ask naturally. Stay in control.</h2>
+          <p class="lede">The assistant can answer, report progress, and use approved tools on this laptop. Sensitive actions wait for you.</p>
+        </div>
+        <div class="meter" aria-label="Voice activity">
+          <span></span><span></span><span></span><span></span><span></span><span></span><span></span>
+        </div>
+      </section>
+
+      <section class="workspace">
+        <div class="conversation-panel">
+          <div id="conversation" class="conversation" aria-live="polite">
+            <article class="message assistant">
+              <span class="message-label">ASSISTANT</span>
+              <p>I’m ready. Connect voice, then speak or type a request.</p>
+            </article>
+          </div>
+          <form id="command-form" class="composer">
+            <label class="sr-only" for="command-input">Type a command</label>
+            <input id="command-input" autocomplete="off" placeholder="Type a command…" disabled />
+            <button type="submit" disabled>Send</button>
+          </form>
+        </div>
+
+        <aside class="activity-panel">
+          <div class="panel-heading">
+            <div>
+              <p class="eyebrow">TRANSPARENT BY DEFAULT</p>
+              <h3>Activity</h3>
+            </div>
+            <button id="clear-activity" class="ghost">Clear</button>
+          </div>
+          <div id="approvals"></div>
+          <ol id="activity" class="activity-list">
+            <li><time>Now</time><span>Waiting to connect</span></li>
+          </ol>
+        </aside>
+      </section>
+    </main>
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>
