@@ -20,7 +20,8 @@
         <div class="connection">
           <span id="status-dot" class="status-dot"></span>
           <span id="status-label">Checking local AI…</span>
-          <button id="connect-button" class="primary" disabled>Local voice next</button>
+          <button id="speech-toggle" class="ghost" aria-pressed="false">Voice replies: Off</button>
+          <button id="connect-button" class="primary" disabled>Local mic next</button>
         </div>
       </header>
 
@@ -40,7 +41,7 @@
           <div id="conversation" class="conversation" aria-live="polite">
             <article class="message assistant">
               <span class="message-label">ASSISTANT</span>
-              <p>I’m ready. Type a request while local voice is being added.</p>
+              <p>I’m ready. Type a request, and optionally enable spoken replies.</p>
             </article>
           </div>
           <form id="command-form" class="composer">

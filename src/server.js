@@ -24,7 +24,7 @@ const runtime = new ToolRuntime({ projectRoot, allowedRoots });
 const localAssistant = new OllamaAssistant({
   runtime,
   baseUrl: process.env.OLLAMA_BASE_URL || "http://127.0.0.1:11434",
-  model: process.env.OLLAMA_MODEL || "qwen3:4b",
+  model: process.env.OLLAMA_MODEL || "qwen3:4b-instruct-2507-q4_K_M",
 });
 let lastSessionError = null;
 
@@ -92,9 +92,11 @@ const server = http.createServer(async (request, response) => {
   }
 });
 
+const warmup = await localAssistant.warm();
 server.listen(port, host, () => {
   console.log(`Laptop Assistant is ready at http://${host}:${port}`);
   console.log(`Local AI: ${localAssistant.model} at ${localAssistant.baseUrl}`);
+  console.log(warmup.ready ? "Local model is warm." : `Local model warmup skipped: ${warmup.message}`);
   if (!enableOpenAIRealtime) console.log("Paid OpenAI Realtime voice is disabled; local text mode is active.");
 });
 

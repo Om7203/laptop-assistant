@@ -69,7 +69,7 @@ if ($existingHealth) {
 $serverProcess = Start-Process -FilePath "node.exe" -ArgumentList @($serverScript) -WorkingDirectory $projectDirectory -WindowStyle Hidden -PassThru
 
 $health = $null
-for ($attempt = 0; $attempt -lt 40; $attempt++) {
+for ($attempt = 0; $attempt -lt 120; $attempt++) {
     Start-Sleep -Milliseconds 250
     $health = Get-AssistantHealth
     if ($health) { break }

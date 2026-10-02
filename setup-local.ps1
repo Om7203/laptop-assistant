@@ -27,7 +27,7 @@ function Get-NormalizedUrl([string]$Value) {
 
 $settings = Read-Settings
 $defaultUrl = if ($settings.OLLAMA_BASE_URL) { $settings.OLLAMA_BASE_URL } else { "http://127.0.0.1:11434" }
-$defaultModel = if ($settings.OLLAMA_MODEL) { $settings.OLLAMA_MODEL } else { "qwen3:4b" }
+$defaultModel = if ($settings.OLLAMA_MODEL) { $settings.OLLAMA_MODEL } else { "qwen3:4b-instruct-2507-q4_K_M" }
 
 $form = New-Object Windows.Forms.Form
 $form.Text = "Configure local AI"
@@ -67,7 +67,7 @@ $modelBox.Size = New-Object Drawing.Size(430, 26)
 $form.Controls.Add($modelBox)
 
 $hint = New-Object Windows.Forms.Label
-$hint.Text = "For this laptop's 4 GB GPU, qwen3:4b is the recommended local model."
+$hint.Text = "Recommended fast model: qwen3:4b-instruct-2507-q4_K_M"
 $hint.Location = New-Object Drawing.Point(150, 140)
 $hint.Size = New-Object Drawing.Size(430, 30)
 $form.Controls.Add($hint)

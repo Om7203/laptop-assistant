@@ -15,6 +15,8 @@ export class OllamaAssistant {
     model = "qwen3:4b",
     fetchImpl = globalThis.fetch,
     timeoutMs = 120_000,
+    keepAlive = "30m",
+    contextSize = 8_192,
   } = {}) {
     if (!runtime) throw new Error("A tool runtime is required.");
     this.runtime = runtime;
@@ -22,6 +24,8 @@ export class OllamaAssistant {
     this.model = model;
     this.fetch = fetchImpl;
     this.timeoutMs = timeoutMs;
+    this.keepAlive = keepAlive;
+    this.contextSize = contextSize;
     this.messages = [{ role: "system", content: SYSTEM_PROMPT }];
     this.pendingApprovals = new Map();
     this.busy = false;
@@ -30,6 +34,26 @@ export class OllamaAssistant {
   reset() {
     this.messages = [{ role: "system", content: SYSTEM_PROMPT }];
     this.pendingApprovals.clear();
+  }
+
+  async warm() {
+    try {
+      const response = await this.fetch(new URL("/api/chat", this.baseUrl), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: this.model,
+          messages: [],
+          stream: false,
+          keep_alive: this.keepAlive,
+          options: { num_ctx: this.contextSize },
+        }),
+        signal: AbortSignal.timeout(this.timeoutMs),
+      });
+      return { ready: response.ok, message: response.ok ? "Model loaded." : `Ollama returned HTTP ${response.status}.` };
+    } catch {
+      return { ready: false, message: `Ollama is not reachable at ${this.baseUrl}.` };
+    }
   }
 
   async status() {
@@ -59,6 +83,8 @@ export class OllamaAssistant {
     const message = typeof text === "string" ? text.trim() : "";
     if (!message || message.length > 20_000) throw new ToolError("invalid_message", "Enter a message under 20,000 characters.");
     if (this.pendingApprovals.size) throw new ToolError("approval_pending", "Approve or deny the pending action first.");
+    const instant = instantReply(message);
+    if (instant) return { status: "completed", message: instant, model: "local-fast-path" };
     return this.withLock(async () => {
       this.messages.push({ role: "user", content: message });
       this.trimHistory();
@@ -140,6 +166,11 @@ export class OllamaAssistant {
           tools: toOllamaTools(TOOL_DEFINITIONS),
           stream: false,
           think: false,
+          keep_alive: this.keepAlive,
+          options: {
+            num_ctx: this.contextSize,
+            temperature: 0.2,
+          },
         }),
         signal: AbortSignal.timeout(this.timeoutMs),
       });
@@ -207,4 +238,12 @@ function normalizeArguments(value) {
 
 function modelMatches(installed, configured) {
   return installed === configured || installed === `${configured}:latest` || `${installed}:latest` === configured;
+}
+
+function instantReply(text) {
+  const normalized = text.toLowerCase().replace(/[!.,?]+$/g, "").trim();
+  if (new Set(["hi", "hello", "hey", "hi there", "hello there", "good morning", "good afternoon", "good evening"]).has(normalized)) {
+    return "Hi! How can I help?";
+  }
+  return null;
 }

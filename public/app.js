@@ -1,4 +1,5 @@
 const connectButton = document.querySelector("#connect-button");
+const speechToggle = document.querySelector("#speech-toggle");
 const statusDot = document.querySelector("#status-dot");
 const statusLabel = document.querySelector("#status-label");
 const commandForm = document.querySelector("#command-form");
@@ -14,8 +15,11 @@ let dataChannel;
 let microphoneStream;
 let assistantDraft = "";
 let openAIRealtimeAvailable = false;
+let speechRepliesEnabled = false;
 
 checkLocalBackend();
+speechToggle.addEventListener("click", toggleSpeechReplies);
+if (!("speechSynthesis" in window)) speechToggle.disabled = true;
 
 connectButton.addEventListener("click", () => (peerConnection ? disconnect() : connect()));
 commandForm.addEventListener("submit", sendTextCommand);
@@ -130,7 +134,9 @@ async function sendLocalCommand(text) {
       logActivity(`Approval requested: ${result.summary}`);
       result = await waitForApproval(result, true);
     }
-    addMessage("assistant", result.message || "Done.");
+    const reply = result.message || "Done.";
+    addMessage("assistant", reply);
+    speakReply(reply);
     logActivity(`Answered locally with ${result.model || "Ollama"}`);
   } catch (error) {
     addMessage("assistant", `Local assistant error: ${error.message}`);
@@ -286,7 +292,7 @@ async function checkLocalBackend() {
     const health = await fetch("/api/health").then((response) => response.json());
     openAIRealtimeAvailable = Boolean(health.realtime_configured);
     connectButton.disabled = !openAIRealtimeAvailable;
-    connectButton.textContent = openAIRealtimeAvailable ? "Connect voice" : "Local voice next";
+    connectButton.textContent = openAIRealtimeAvailable ? "Connect voice" : "Local mic next";
 
     const local = await fetch("/api/ollama/status").then((response) => response.json());
     if (!local.reachable) {
@@ -302,6 +308,22 @@ async function checkLocalBackend() {
   } catch {
     setConnectionState("offline", "Local server error");
   }
+}
+
+function toggleSpeechReplies() {
+  speechRepliesEnabled = !speechRepliesEnabled;
+  speechToggle.setAttribute("aria-pressed", String(speechRepliesEnabled));
+  speechToggle.textContent = `Voice replies: ${speechRepliesEnabled ? "On" : "Off"}`;
+  if (!speechRepliesEnabled) window.speechSynthesis.cancel();
+  logActivity(`Spoken replies ${speechRepliesEnabled ? "enabled" : "disabled"}`);
+}
+
+function speakReply(text) {
+  if (!speechRepliesEnabled || !("speechSynthesis" in window)) return;
+  window.speechSynthesis.cancel();
+  const utterance = new SpeechSynthesisUtterance(text);
+  utterance.rate = 1;
+  window.speechSynthesis.speak(utterance);
 }
 
 function friendlyName(name = "tool") {

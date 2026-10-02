@@ -14,9 +14,22 @@ test("returns a normal local model response", async () => {
   const assistant = createAssistant([
     { message: { role: "assistant", content: "Hello from the local model." } },
   ]);
-  const result = await assistant.send("Hello");
+  const result = await assistant.send("Tell me something useful.");
   assert.equal(result.status, "completed");
   assert.equal(result.message, "Hello from the local model.");
+});
+
+test("answers a simple greeting without invoking the model", async () => {
+  let calls = 0;
+  const runtime = new ToolRuntime({ projectRoot: process.cwd() });
+  const assistant = new OllamaAssistant({
+    runtime,
+    fetchImpl: async () => { calls += 1; throw new Error("should not be called"); },
+  });
+  const result = await assistant.send("Hi!");
+  assert.equal(result.message, "Hi! How can I help?");
+  assert.equal(result.model, "local-fast-path");
+  assert.equal(calls, 0);
 });
 
 test("executes an automatic tool and sends its result back to Ollama", async () => {
