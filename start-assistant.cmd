@@ -2,7 +2,7 @@
 setlocal
 cd /d "%~dp0"
 
-if not exist ".env" (
+if not defined OPENAI_API_KEY if not exist "config\openai-key.dpapi" (
   echo First-time setup is required.
   powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0setup.ps1"
   if errorlevel 1 pause & exit /b 1

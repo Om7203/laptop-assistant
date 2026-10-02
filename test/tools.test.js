@@ -1,9 +1,39 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { decryptWindowsCredential, resolveOpenAIKey } from "../src/secrets.js";
 import { ToolError, ToolRuntime } from "../src/tools.js";
+
+test("prefers an injected environment key without writing it to disk", () => {
+  const result = resolveOpenAIKey({
+    projectRoot: process.cwd(),
+    environment: { OPENAI_API_KEY: "test-key-from-environment" },
+  });
+  assert.equal(result, "test-key-from-environment");
+});
+
+test("decrypts a Windows DPAPI credential for the current user", { skip: process.platform !== "win32" }, async (context) => {
+  const sandbox = await fs.mkdtemp(path.join(os.tmpdir(), "assistant-secret-test-"));
+  const credentialFile = path.join(sandbox, "test.dpapi");
+  const script = [
+    "$secure = ConvertTo-SecureString 'temporary-test-secret' -AsPlainText -Force",
+    "$encrypted = ConvertFrom-SecureString -SecureString $secure",
+    "[IO.File]::WriteAllText($args[0], $encrypted)",
+  ].join("; ");
+  try {
+    execFileSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", script, credentialFile]);
+  } catch (error) {
+    if (error.code === "EPERM") {
+      context.skip("The current test sandbox blocks child PowerShell processes.");
+      return;
+    }
+    throw error;
+  }
+  assert.equal(decryptWindowsCredential(credentialFile), "temporary-test-secret");
+});
 
 test("returns local system status", async () => {
   const runtime = new ToolRuntime({ projectRoot: process.cwd() });

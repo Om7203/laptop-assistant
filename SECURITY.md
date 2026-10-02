@@ -19,7 +19,7 @@ This application controls a real computer. Treat every new tool as a security bo
 - Application launching uses a fixed server-side map.
 - External URLs accept only `https:` and `http:` and require approval.
 - The server limits request body sizes.
-- The browser receives no standard OpenAI API key.
+- The API key is encrypted at rest with Windows DPAPI, decrypted only by the local server at startup, and never sent to browser code or model tools.
 
 ## Reporting
 

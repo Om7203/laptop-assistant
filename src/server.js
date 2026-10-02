@@ -3,11 +3,13 @@ import fsp from "node:fs/promises";
 import http from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { resolveOpenAIKey } from "./secrets.js";
 import { TOOL_DEFINITIONS, ToolError, ToolRuntime } from "./tools.js";
 
 const sourceDirectory = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(sourceDirectory, "..");
 loadEnv(path.join(projectRoot, ".env"));
+const openaiApiKey = resolveOpenAIKey({ projectRoot });
 
 const publicRoot = path.join(projectRoot, "public");
 const port = numberFromEnv(process.env.PORT, 3199);
@@ -25,7 +27,7 @@ const server = http.createServer(async (request, response) => {
     if (request.method === "GET" && request.url === "/api/health") {
       return json(response, 200, {
         status: "ok",
-        realtime_configured: Boolean(process.env.OPENAI_API_KEY),
+        realtime_configured: Boolean(openaiApiKey),
         model: process.env.OPENAI_REALTIME_MODEL || "gpt-realtime-2.1",
       });
     }
@@ -59,11 +61,11 @@ const server = http.createServer(async (request, response) => {
 
 server.listen(port, host, () => {
   console.log(`Laptop Assistant is ready at http://${host}:${port}`);
-  if (!process.env.OPENAI_API_KEY) console.log("Voice is disabled until OPENAI_API_KEY is added to .env.");
+  if (!openaiApiKey) console.log("Voice is disabled until setup.ps1 stores an encrypted API key.");
 });
 
 async function createRealtimeSession(request, response) {
-  const apiKey = process.env.OPENAI_API_KEY;
+  const apiKey = openaiApiKey;
   if (!apiKey) return json(response, 503, { error: "missing_api_key", message: "Add OPENAI_API_KEY to .env first." });
 
   const sdp = await readBody(request, 1_000_000);
