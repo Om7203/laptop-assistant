@@ -15,9 +15,29 @@ model_directory = os.environ.get("WHISPER_MODEL_DIR")
 device = os.environ.get("WHISPER_DEVICE", "cpu")
 compute_type = os.environ.get("WHISPER_COMPUTE_TYPE", "int8")
 
+
+def cached_model_source(name, root):
+    """Use a completed local Hugging Face snapshot without contacting the network."""
+    if not root or os.path.isdir(name):
+        return name
+    repository = os.path.join(root, f"models--Systran--faster-whisper-{name}")
+    snapshots = os.path.join(repository, "snapshots")
+    if not os.path.isdir(snapshots):
+        return name
+    required = ("config.json", "model.bin", "tokenizer.json", "vocabulary.txt")
+    candidates = []
+    for revision in os.listdir(snapshots):
+        directory = os.path.join(snapshots, revision)
+        if os.path.isdir(directory) and all(os.path.isfile(os.path.join(directory, item)) for item in required):
+            candidates.append(directory)
+    return candidates[-1] if candidates else name
+
+
+model_source = cached_model_source(model_name, model_directory)
+
 try:
     model = WhisperModel(
-        model_name,
+        model_source,
         device=device,
         compute_type=compute_type,
         download_root=model_directory,
