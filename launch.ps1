@@ -49,7 +49,7 @@ function Open-AssistantWindow {
 }
 
 $existingHealth = Get-AssistantHealth
-if ($existingHealth -and $existingHealth.api_version -eq 2) {
+if ($existingHealth -and $existingHealth.api_version -eq 3) {
     Open-AssistantWindow
     exit 0
 }
@@ -57,7 +57,7 @@ if ($existingHealth -and $existingHealth.api_version -eq 2) {
 if ($existingHealth) {
     $existingProcess = Get-AssistantListenerProcess
     if ($existingProcess -and $existingProcess.ProcessName -eq "node") {
-        Write-Host "Restarting the assistant to load the saved key..."
+        Write-Host "Restarting the assistant to load the latest local features..."
         Stop-Process -Id $existingProcess.Id -Force
         for ($attempt = 0; $attempt -lt 20; $attempt++) {
             Start-Sleep -Milliseconds 100

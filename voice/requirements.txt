@@ -1,0 +1,3 @@
+# Documentation only. setup-local-voice.ps1 uses pinned, prebuilt Windows wheels
+# from install_dependencies.mjs so setup is repeatable and never needs a compiler.
+faster-whisper==1.2.1

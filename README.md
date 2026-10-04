@@ -5,6 +5,8 @@ A security-first, local-first assistant for Windows. Ollama supplies the languag
 ## Current milestone
 
 - Typed conversations through Qwen3 on Ollama
+- Push-to-talk voice commands transcribed locally with faster-whisper
+- Optional spoken replies using installed Windows browser voices
 - Ollama can run on this Windows laptop or another machine on the private network
 - Multi-turn local tool calling
 - Visible progress updates
@@ -25,6 +27,15 @@ This is deliberately not an unrestricted shell. New capabilities should be added
 3. Double-click `configure-local-model.cmd` on Windows.
 4. If Ollama runs on Windows, keep `http://127.0.0.1:11434`. If it runs on Linux, enter its private-network address, such as `http://192.168.1.50:11434`.
 5. Select **Test connection**, save the settings, and then double-click `start-assistant.cmd`.
+
+## Add local voice input
+
+1. Double-click `setup-local-voice.cmd`. It creates an isolated Python environment inside the project, installs faster-whisper, and downloads the `base.en` speech model.
+2. Restart `start-assistant.cmd`.
+3. Select **Push to talk**, speak a command, and select **Stop & send**. Recording stops automatically after 30 seconds.
+4. Turn on **Voice replies** if you want the assistant to read its answers aloud.
+
+Recorded audio is sent only to the local server, transcribed on this laptop, and deleted immediately after transcription. The persistent speech worker keeps the model loaded between commands for lower latency.
 
 When Google Chrome is installed, the launcher opens the assistant in a standalone app-style window without normal browser tabs or an address bar. It falls back to the default browser otherwise.
 
@@ -68,7 +79,7 @@ Local approval + tool server
         +----> Allowlisted laptop tools
 ```
 
-The interface can already read local-model replies aloud using the operating system's installed browser voices. The next voice milestone adds browser microphone recording and local faster-whisper transcription so spoken commands also stay local.
+The interface records push-to-talk microphone commands and transcribes them through a persistent local faster-whisper worker. Replies can be spoken using the operating system's installed browser voices. A future milestone can add a wake word and hands-free turn detection.
 
 ## Security model
 
@@ -85,15 +96,16 @@ See [SECURITY.md](SECURITY.md) before adding tools.
 
 ## Roadmap
 
-1. Add faster-whisper microphone transcription and local speech output.
-2. Package as a Windows tray application and add push-to-talk.
-3. Add a local wake word.
-4. Add screen understanding and safe browser automation.
-5. Add reminders, memory, calendar, and email connectors.
-6. Add signed releases and an automatic updater.
+1. Package as a Windows tray application.
+2. Add a local wake word and hands-free turn detection.
+3. Add screen understanding and safe browser automation.
+4. Add reminders, memory, calendar, and email connectors.
+5. Add signed releases and an automatic updater.
 
 ## Configuration
 
 `OLLAMA_BASE_URL` selects the Ollama server. `OLLAMA_MODEL` selects the installed model. The defaults are `http://127.0.0.1:11434` and `qwen3:4b-instruct-2507-q4_K_M`.
+
+`WHISPER_MODEL`, `WHISPER_DEVICE`, and `WHISPER_COMPUTE_TYPE` customize local transcription. The reliable defaults are `base.en`, `cpu`, and `int8`.
 
 `ASSISTANT_ALLOWED_ROOTS` accepts absolute paths separated by semicolons. The project directory is always allowed. Directory traversal and symbolic-link escapes are rejected.

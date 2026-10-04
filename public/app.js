@@ -16,12 +16,17 @@ let microphoneStream;
 let assistantDraft = "";
 let openAIRealtimeAvailable = false;
 let speechRepliesEnabled = false;
+let localVoiceInstalled = false;
+let localRecorder;
+let localRecordingChunks = [];
+let localRecordingTimer;
+let localStatusText = "Local AI ready";
 
 checkLocalBackend();
 speechToggle.addEventListener("click", toggleSpeechReplies);
 if (!("speechSynthesis" in window)) speechToggle.disabled = true;
 
-connectButton.addEventListener("click", () => (peerConnection ? disconnect() : connect()));
+connectButton.addEventListener("click", handleVoiceButton);
 commandForm.addEventListener("submit", sendTextCommand);
 clearActivity.addEventListener("click", () => (activity.innerHTML = ""));
 
@@ -71,6 +76,84 @@ async function connect() {
     addMessage("assistant", `Connection failed: ${message}`);
     logActivity(`Connection failed: ${message}`);
     disconnect();
+  }
+}
+
+async function handleVoiceButton() {
+  if (openAIRealtimeAvailable) {
+    if (peerConnection) disconnect();
+    else await connect();
+    return;
+  }
+  if (!localVoiceInstalled) return;
+  if (localRecorder?.state === "recording") stopLocalRecording();
+  else await startLocalRecording();
+}
+
+async function startLocalRecording() {
+  try {
+    microphoneStream = await navigator.mediaDevices.getUserMedia({
+      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+    });
+    const preferredType = ["audio/webm;codecs=opus", "audio/webm", "audio/ogg;codecs=opus"]
+      .find((type) => MediaRecorder.isTypeSupported(type));
+    localRecordingChunks = [];
+    localRecorder = new MediaRecorder(microphoneStream, preferredType ? { mimeType: preferredType } : undefined);
+    localRecorder.addEventListener("dataavailable", (event) => {
+      if (event.data.size) localRecordingChunks.push(event.data);
+    });
+    localRecorder.addEventListener("stop", transcribeLocalRecording, { once: true });
+    localRecorder.start();
+    connectButton.textContent = "Stop & send";
+    document.body.classList.add("listening");
+    setConnectionState("connected", "Listening…");
+    logActivity("Local microphone recording started");
+    localRecordingTimer = setTimeout(stopLocalRecording, 30_000);
+  } catch (error) {
+    const message = friendlyConnectionError(error);
+    addMessage("assistant", `Microphone failed: ${message}`);
+    logActivity(`Microphone failed: ${message}`);
+  }
+}
+
+function stopLocalRecording() {
+  if (localRecorder?.state !== "recording") return;
+  clearTimeout(localRecordingTimer);
+  connectButton.disabled = true;
+  connectButton.textContent = "Transcribing…";
+  setConnectionState("connecting", "Transcribing locally…");
+  localRecorder.stop();
+}
+
+async function transcribeLocalRecording() {
+  const type = localRecorder?.mimeType || localRecordingChunks[0]?.type || "audio/webm";
+  const recording = new Blob(localRecordingChunks, { type });
+  microphoneStream?.getTracks().forEach((track) => track.stop());
+  microphoneStream = null;
+  localRecorder = null;
+  localRecordingChunks = [];
+  document.body.classList.remove("listening");
+
+  try {
+    const response = await fetch("/api/transcribe", {
+      method: "POST",
+      headers: { "Content-Type": type },
+      body: recording,
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.message || result.error || "Transcription failed.");
+    const text = result.text?.trim();
+    if (!text) throw new Error("I could not hear any speech. Please try again.");
+    addMessage("user", text);
+    logActivity(`Transcribed locally in ${result.duration_ms ?? "?"} ms`);
+    await sendLocalCommand(text);
+  } catch (error) {
+    addMessage("assistant", `Voice input failed: ${error.message}`);
+    logActivity(`Voice input failed: ${error.message}`);
+  } finally {
+    connectButton.disabled = false;
+    connectButton.textContent = "Push to talk";
+    setConnectionState("connected", localStatusText);
   }
 }
 
@@ -291,8 +374,11 @@ async function checkLocalBackend() {
   try {
     const health = await fetch("/api/health").then((response) => response.json());
     openAIRealtimeAvailable = Boolean(health.realtime_configured);
-    connectButton.disabled = !openAIRealtimeAvailable;
-    connectButton.textContent = openAIRealtimeAvailable ? "Connect voice" : "Local mic next";
+    const voice = await fetch("/api/voice/status").then((response) => response.json());
+    localVoiceInstalled = Boolean(voice.installed) && "MediaRecorder" in window && Boolean(navigator.mediaDevices?.getUserMedia);
+    connectButton.disabled = !(openAIRealtimeAvailable || localVoiceInstalled);
+    connectButton.textContent = openAIRealtimeAvailable ? "Connect voice" : localVoiceInstalled ? "Push to talk" : "Set up local mic";
+    logActivity(voice.message || "Local voice status checked");
 
     const local = await fetch("/api/ollama/status").then((response) => response.json());
     if (!local.reachable) {
@@ -302,7 +388,8 @@ async function checkLocalBackend() {
       setConnectionState("offline", "Model missing");
       logActivity(`Install ${local.model} on the Ollama server`);
     } else {
-      setConnectionState("connected", `Local · ${local.model}`);
+      localStatusText = `Local · ${local.model}`;
+      setConnectionState("connected", localStatusText);
       logActivity(`Local model ready: ${local.model}`);
     }
   } catch {

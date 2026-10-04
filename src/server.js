@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { OllamaAssistant } from "./ollama.js";
 import { resolveOpenAIKey } from "./secrets.js";
 import { TOOL_DEFINITIONS, ToolError, ToolRuntime } from "./tools.js";
+import { LocalWhisper } from "./whisper.js";
 
 const sourceDirectory = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(sourceDirectory, "..");
@@ -26,6 +27,10 @@ const localAssistant = new OllamaAssistant({
   baseUrl: process.env.OLLAMA_BASE_URL || "http://127.0.0.1:11434",
   model: process.env.OLLAMA_MODEL || "qwen3:4b-instruct-2507-q4_K_M",
 });
+const localWhisper = new LocalWhisper({
+  projectRoot,
+  model: process.env.WHISPER_MODEL || "base.en",
+});
 let lastSessionError = null;
 
 const server = http.createServer(async (request, response) => {
@@ -35,7 +40,7 @@ const server = http.createServer(async (request, response) => {
     if (request.method === "GET" && request.url === "/api/health") {
       return json(response, 200, {
         status: "ok",
-        api_version: 2,
+        api_version: 3,
         backend: "ollama",
         ollama_model: localAssistant.model,
         realtime_configured: enableOpenAIRealtime && Boolean(openaiApiKey),
@@ -46,6 +51,20 @@ const server = http.createServer(async (request, response) => {
 
     if (request.method === "GET" && request.url === "/api/ollama/status") {
       return json(response, 200, await localAssistant.status());
+    }
+
+    if (request.method === "GET" && request.url === "/api/voice/status") {
+      return json(response, 200, localWhisper.status());
+    }
+
+    if (request.method === "POST" && request.url === "/api/transcribe") {
+      const contentType = request.headers["content-type"] || "audio/webm";
+      if (!String(contentType).toLowerCase().startsWith("audio/")) {
+        return json(response, 415, { error: "unsupported_audio", message: "An audio recording is required." });
+      }
+      const audio = await readBuffer(request, 15_000_000);
+      const result = await localWhisper.transcribe(audio, contentType);
+      return json(response, 200, { status: "completed", ...result });
     }
 
     if (request.method === "POST" && request.url === "/api/chat") {
@@ -185,6 +204,10 @@ async function serveStatic(request, response) {
 }
 
 function readBody(request, limit) {
+  return readBuffer(request, limit).then((buffer) => buffer.toString("utf8"));
+}
+
+function readBuffer(request, limit) {
   return new Promise((resolve, reject) => {
     let size = 0;
     const chunks = [];
@@ -199,7 +222,7 @@ function readBody(request, limit) {
       }
       chunks.push(chunk);
     });
-    request.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
+    request.on("end", () => resolve(Buffer.concat(chunks)));
     request.on("error", reject);
   });
 }

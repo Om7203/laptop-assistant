@@ -1,6 +1,10 @@
 .env
 .DS_Store
 node_modules/
+.venv-voice/
+.voice-wheels/
+models/
+__pycache__/
 coverage/
 *.log
 config/local.json
