@@ -111,13 +111,37 @@ const server = http.createServer(async (request, response) => {
   }
 });
 
-const warmup = await localAssistant.warm();
-server.listen(port, host, () => {
+export async function startServer() {
+  if (server.listening) return { host, port, url: `http://${host}:${port}` };
+  await new Promise((resolve, reject) => {
+    const onError = (error) => {
+      server.off("listening", onListening);
+      reject(error);
+    };
+    const onListening = () => {
+      server.off("error", onError);
+      resolve();
+    };
+    server.once("error", onError);
+    server.once("listening", onListening);
+    server.listen(port, host);
+  });
   console.log(`Laptop Assistant is ready at http://${host}:${port}`);
   console.log(`Local AI: ${localAssistant.model} at ${localAssistant.baseUrl}`);
-  console.log(warmup.ready ? "Local model is warm." : `Local model warmup skipped: ${warmup.message}`);
   if (!enableOpenAIRealtime) console.log("Paid OpenAI Realtime voice is disabled; local text mode is active.");
-});
+  void localAssistant.warm().then((warmup) => {
+    console.log(warmup.ready ? "Local model is warm." : `Local model warmup skipped: ${warmup.message}`);
+  });
+  return { host, port, url: `http://${host}:${port}` };
+}
+
+export async function stopServer() {
+  if (!server.listening) return;
+  await new Promise((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
+}
+
+const launchedDirectly = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+if (launchedDirectly) await startServer();
 
 async function createRealtimeSession(request, response) {
   const apiKey = openaiApiKey;

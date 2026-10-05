@@ -29,6 +29,10 @@ if (!("speechSynthesis" in window)) speechToggle.disabled = true;
 connectButton.addEventListener("click", handleVoiceButton);
 commandForm.addEventListener("submit", sendTextCommand);
 clearActivity.addEventListener("click", () => (activity.innerHTML = ""));
+globalThis.desktopAssistant?.onPushToTalk(() => {
+  logActivity("Global push-to-talk shortcut pressed");
+  void handleVoiceButton();
+});
 
 async function connect() {
   if (!openAIRealtimeAvailable) return;

@@ -7,6 +7,8 @@ A security-first, local-first assistant for Windows. Ollama supplies the languag
 - Typed conversations through Qwen3 on Ollama
 - Push-to-talk voice commands transcribed locally with faster-whisper
 - Optional spoken replies using installed Windows browser voices
+- Native Windows desktop window with a system-tray menu
+- Global `Ctrl+Shift+Space` push-to-talk shortcut
 - Ollama can run on this Windows laptop or another machine on the private network
 - Multi-turn local tool calling
 - Visible progress updates
@@ -36,6 +38,16 @@ This is deliberately not an unrestricted shell. New capabilities should be added
 4. Turn on **Voice replies** if you want the assistant to read its answers aloud.
 
 Recorded audio is sent only to the local server, transcribed on this laptop, and deleted immediately after transcription. The persistent speech worker keeps the model loaded between commands for lower latency.
+
+## Run the native desktop version
+
+1. Complete the Ollama and local voice setup above.
+2. Double-click `setup-desktop.cmd` once. This installs the pinned Electron desktop runtime inside the project.
+3. Double-click `start-desktop.cmd` whenever you want to run the assistant.
+4. Close the window to keep the assistant available in the Windows system tray. Use the tray menu to reopen or quit it.
+5. Press `Ctrl+Shift+Space` anywhere to start recording. Press it again to stop and send the recording.
+
+The desktop window runs the same local interface and permission-gated tools. Node integration is disabled in the window, browsing away from the local interface is blocked, and microphone access is allowed only for the local assistant origin. The original `start-assistant.cmd` browser launcher remains available.
 
 When Google Chrome is installed, the launcher opens the assistant in a standalone app-style window without normal browser tabs or an address bar. It falls back to the default browser otherwise.
 
@@ -96,11 +108,10 @@ See [SECURITY.md](SECURITY.md) before adding tools.
 
 ## Roadmap
 
-1. Package as a Windows tray application.
-2. Add a local wake word and hands-free turn detection.
-3. Add screen understanding and safe browser automation.
-4. Add reminders, memory, calendar, and email connectors.
-5. Add signed releases and an automatic updater.
+1. Add a local wake word and hands-free turn detection.
+2. Add screen understanding and safe browser automation.
+3. Add reminders, memory, calendar, and email connectors.
+4. Package a signed installer and add automatic updates.
 
 ## Configuration
 
