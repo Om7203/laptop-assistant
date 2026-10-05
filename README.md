@@ -17,6 +17,8 @@ A security-first, local-first assistant for Windows. Ollama supplies the languag
 - Allowlisted application launching
 - Human approval before opening external URLs
 - Local activity log in the interface
+- Structured, privacy-safe JSON application logs
+- Prometheus metrics plus liveness and readiness checks
 - No API key required for normal usage
 - Optional legacy OpenAI Realtime mode is disabled by default
 
@@ -53,7 +55,7 @@ When Google Chrome is installed, the launcher opens the assistant in a standalon
 
 The interface is served only from `127.0.0.1`, so it is a local application page rather than a public website. The local server must stay running while the window is open. Messages are sent only to the configured Ollama server.
 
-The Node application itself has no npm dependencies to install.
+The Node application uses pinned production dependencies for structured logging and Prometheus metrics. `setup-desktop.cmd` installs them together with the desktop runtime.
 
 ### Using Ollama on Linux
 
@@ -106,12 +108,25 @@ No local secret can be guaranteed safe from malware, an administrator, or arbitr
 
 See [SECURITY.md](SECURITY.md) before adding tools.
 
+## Production observability
+
+The local server exposes operational endpoints on the same loopback-only address:
+
+- `GET /api/health/live` confirms that the process is running.
+- `GET /api/health/ready` checks whether Ollama and the configured model are available and reports Whisper separately.
+- `GET /metrics` returns Prometheus-compatible process and application metrics.
+
+Every HTTP response includes an `X-Request-ID`. Structured logs connect that identifier to request duration and outcome without recording prompts, transcripts, URLs, file paths, API keys, or authorization values. The Windows launchers write JSON logs to `logs/assistant.log`, which remains excluded from Git.
+
+See [OBSERVABILITY.md](OBSERVABILITY.md) for the metric catalog, initial SLOs, privacy rules, and failure runbook.
+
 ## Roadmap
 
-1. Add a local wake word and hands-free turn detection.
-2. Add screen understanding and safe browser automation.
-3. Add reminders, memory, calendar, and email connectors.
-4. Package a signed installer and add automatic updates.
+1. Add Prometheus and Grafana dashboards, alert rules, and distributed traces.
+2. Add a local wake word and hands-free turn detection.
+3. Add screen understanding and safe browser automation.
+4. Add reminders, memory, calendar, and email connectors.
+5. Package a signed installer and add automatic updates.
 
 ## Configuration
 
@@ -120,3 +135,5 @@ See [SECURITY.md](SECURITY.md) before adding tools.
 `WHISPER_MODEL`, `WHISPER_DEVICE`, and `WHISPER_COMPUTE_TYPE` customize local transcription. The reliable defaults are `base.en`, `cpu`, and `int8`.
 
 `ASSISTANT_ALLOWED_ROOTS` accepts absolute paths separated by semicolons. The project directory is always allowed. Directory traversal and symbolic-link escapes are rejected.
+
+`LOG_LEVEL` controls structured log verbosity and defaults to `info`. `LOG_DESTINATION` optionally selects a JSON log file; the Windows launchers default to `logs/assistant.log`.

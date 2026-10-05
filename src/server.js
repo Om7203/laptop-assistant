@@ -2,7 +2,9 @@ import fs from "node:fs";
 import fsp from "node:fs/promises";
 import http from "node:http";
 import path from "node:path";
+import { randomUUID } from "node:crypto";
 import { fileURLToPath } from "node:url";
+import { AssistantMetrics, createLogger, normalizeRoute } from "./observability.js";
 import { OllamaAssistant } from "./ollama.js";
 import { resolveOpenAIKey } from "./secrets.js";
 import { TOOL_DEFINITIONS, ToolError, ToolRuntime } from "./tools.js";
@@ -11,6 +13,8 @@ import { LocalWhisper } from "./whisper.js";
 const sourceDirectory = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(sourceDirectory, "..");
 loadEnv(path.join(projectRoot, ".env"));
+const logger = createLogger();
+const metrics = new AssistantMetrics({ version: "0.3.0" });
 const enableOpenAIRealtime = process.env.ENABLE_OPENAI_REALTIME === "true";
 const openaiApiKey = enableOpenAIRealtime ? resolveOpenAIKey({ projectRoot }) : "";
 
@@ -21,26 +25,74 @@ const allowedRoots = (process.env.ASSISTANT_ALLOWED_ROOTS ?? "")
   .split(";")
   .map((item) => item.trim())
   .filter(Boolean);
-const runtime = new ToolRuntime({ projectRoot, allowedRoots });
+const runtime = new ToolRuntime({ projectRoot, allowedRoots, logger, metrics });
 const localAssistant = new OllamaAssistant({
   runtime,
   baseUrl: process.env.OLLAMA_BASE_URL || "http://127.0.0.1:11434",
   model: process.env.OLLAMA_MODEL || "qwen3:4b-instruct-2507-q4_K_M",
+  logger,
+  metrics,
 });
 const localWhisper = new LocalWhisper({
   projectRoot,
   model: process.env.WHISPER_MODEL || "base.en",
+  logger,
+  metrics,
 });
 let lastSessionError = null;
 
 const server = http.createServer(async (request, response) => {
+  const requestId = randomUUID();
+  const route = normalizeRoute(request.url);
+  const finishMetrics = metrics.startHttp(request.method, request.url);
+  let requestFinished = false;
+  const finishRequest = () => {
+    if (requestFinished) return;
+    requestFinished = true;
+    const durationSeconds = finishMetrics(response.statusCode || 500);
+    logger.info({
+      event: "http.request.completed",
+      request_id: requestId,
+      method: request.method,
+      route,
+      status_code: response.statusCode,
+      duration_ms: Math.round(durationSeconds * 1000),
+    });
+  };
+  response.once("finish", finishRequest);
+  response.once("close", finishRequest);
   try {
     setSecurityHeaders(response);
+    response.setHeader("X-Request-ID", requestId);
+
+    if (request.method === "GET" && request.url === "/api/health/live") {
+      return json(response, 200, { status: "alive", uptime_seconds: Math.round(process.uptime()), version: "0.3.0" });
+    }
+
+    if (request.method === "GET" && request.url === "/api/health/ready") {
+      const ollama = await localAssistant.status();
+      const voice = localWhisper.status();
+      const ready = Boolean(ollama.reachable && ollama.model_available);
+      return json(response, ready ? 200 : 503, {
+        status: ready ? "ready" : "not_ready",
+        components: {
+          ollama: { ready, reachable: ollama.reachable, model_available: ollama.model_available, model: ollama.model },
+          whisper: { ready: voice.installed, installed: voice.installed, worker_loaded: voice.ready, model: voice.model },
+        },
+      });
+    }
+
+    if (request.method === "GET" && request.url === "/metrics") {
+      response.statusCode = 200;
+      response.setHeader("Content-Type", metrics.contentType);
+      response.end(await metrics.render());
+      return;
+    }
 
     if (request.method === "GET" && request.url === "/api/health") {
       return json(response, 200, {
         status: "ok",
-        api_version: 3,
+        api_version: 4,
         backend: "ollama",
         ollama_model: localAssistant.model,
         realtime_configured: enableOpenAIRealtime && Boolean(openaiApiKey),
@@ -106,7 +158,14 @@ const server = http.createServer(async (request, response) => {
   } catch (error) {
     const status = error instanceof ToolError ? 400 : error.statusCode ?? 500;
     const code = error instanceof ToolError ? error.code : "server_error";
-    console.error(error);
+    logger.error({
+      event: "http.request.failed",
+      request_id: requestId,
+      method: request.method,
+      route,
+      error_code: code,
+      error_name: error?.name || "Error",
+    });
     return json(response, status, { error: code, message: error.message ?? "Unexpected server error." });
   }
 });
@@ -126,11 +185,9 @@ export async function startServer() {
     server.once("listening", onListening);
     server.listen(port, host);
   });
-  console.log(`Laptop Assistant is ready at http://${host}:${port}`);
-  console.log(`Local AI: ${localAssistant.model} at ${localAssistant.baseUrl}`);
-  if (!enableOpenAIRealtime) console.log("Paid OpenAI Realtime voice is disabled; local text mode is active.");
+  logger.info({ event: "server.started", host, port, model: localAssistant.model, realtime_enabled: enableOpenAIRealtime });
   void localAssistant.warm().then((warmup) => {
-    console.log(warmup.ready ? "Local model is warm." : `Local model warmup skipped: ${warmup.message}`);
+    logger.info({ event: "ollama.warmup.completed", ready: warmup.ready });
   });
   return { host, port, url: `http://${host}:${port}` };
 }
@@ -188,7 +245,12 @@ async function createRealtimeSession(request, response) {
   const body = await upstream.text();
   if (!upstream.ok) {
     lastSessionError = sanitizeUpstreamError(upstream.status, body);
-    console.error("Realtime session creation failed:", lastSessionError);
+    logger.error({
+      event: "openai.realtime.session.failed",
+      upstream_status: lastSessionError.status,
+      upstream_code: lastSessionError.code,
+      upstream_type: lastSessionError.type,
+    });
   } else {
     lastSessionError = null;
   }

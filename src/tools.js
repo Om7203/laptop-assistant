@@ -67,30 +67,40 @@ export const TOOL_DEFINITIONS = [
 ];
 
 export class ToolRuntime {
-  constructor({ projectRoot, allowedRoots = [], approvalTtlMs = 120_000 } = {}) {
+  constructor({ projectRoot, allowedRoots = [], approvalTtlMs = 120_000, logger = null, metrics = null } = {}) {
     this.projectRoot = path.resolve(projectRoot ?? process.cwd());
     this.allowedRoots = [...new Set([this.projectRoot, ...allowedRoots.map((root) => path.resolve(root))])];
     this.approvalTtlMs = approvalTtlMs;
     this.approvals = new Map();
+    this.logger = logger;
+    this.metrics = metrics;
   }
 
   async request(name, args = {}) {
-    if (name === "open_url") {
-      const url = validateWebUrl(args.url);
-      const approvalId = randomUUID();
-      this.approvals.set(approvalId, {
-        name,
-        args: { url },
-        expiresAt: Date.now() + this.approvalTtlMs,
-      });
-      return {
-        status: "approval_required",
-        approval_id: approvalId,
-        summary: `Open ${url} in the default browser`,
-      };
+    try {
+      let result;
+      if (name === "open_url") {
+        const url = validateWebUrl(args.url);
+        const approvalId = randomUUID();
+        this.approvals.set(approvalId, {
+          name,
+          args: { url },
+          expiresAt: Date.now() + this.approvalTtlMs,
+        });
+        result = {
+          status: "approval_required",
+          approval_id: approvalId,
+          summary: `Open ${url} in the default browser`,
+        };
+      } else {
+        result = await this.execute(name, args);
+      }
+      this.recordTool(name, result.status);
+      return result;
+    } catch (error) {
+      this.recordTool(name, "failed", error.code || "tool_error");
+      throw error;
     }
-
-    return this.execute(name, args);
   }
 
   async decide(approvalId, approved) {
@@ -98,12 +108,34 @@ export class ToolRuntime {
     this.approvals.delete(approvalId);
 
     if (!pending || pending.expiresAt < Date.now()) {
+      this.metrics?.observeApproval("expired");
+      this.recordTool(pending?.name, "denied");
       return { status: "denied", message: "The approval expired or was already used." };
     }
     if (!approved) {
+      this.metrics?.observeApproval("denied");
+      this.recordTool(pending.name, "denied");
       return { status: "denied", message: "The user declined this action." };
     }
-    return this.execute(pending.name, pending.args, { approved: true });
+    this.metrics?.observeApproval("approved");
+    try {
+      const result = await this.execute(pending.name, pending.args, { approved: true });
+      this.recordTool(pending.name, result.status);
+      return result;
+    } catch (error) {
+      this.recordTool(pending.name, "failed", error.code || "tool_error");
+      throw error;
+    }
+  }
+
+  recordTool(name, outcome, errorCode = null) {
+    this.metrics?.observeTool(name, outcome);
+    this.logger?.info({
+      event: "tool.execution.completed",
+      tool: TOOL_DEFINITIONS.some((tool) => tool.name === name) ? name : "unknown",
+      outcome,
+      ...(errorCode ? { error_code: errorCode } : {}),
+    });
   }
 
   async execute(name, args = {}, context = {}) {

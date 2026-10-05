@@ -7,7 +7,7 @@ import path from "node:path";
 import readline from "node:readline";
 
 export class LocalWhisper {
-  constructor({ projectRoot, model = "base.en", timeoutMs = 90_000 } = {}) {
+  constructor({ projectRoot, model = "base.en", timeoutMs = 90_000, logger = null, metrics = null } = {}) {
     this.projectRoot = projectRoot;
     this.model = model;
     this.timeoutMs = timeoutMs;
@@ -17,6 +17,8 @@ export class LocalWhisper {
     this.startPromise = null;
     this.pending = new Map();
     this.ready = false;
+    this.logger = logger;
+    this.metrics = metrics;
   }
 
   status() {
@@ -31,17 +33,19 @@ export class LocalWhisper {
   }
 
   async transcribe(audio, contentType = "audio/webm") {
-    if (!Buffer.isBuffer(audio) || audio.length < 128) throw new Error("The microphone recording was empty.");
-    if (audio.length > 15_000_000) throw new Error("The microphone recording is too large. Keep voice commands under 30 seconds.");
-    await this.start();
-
-    const id = randomUUID();
-    const extension = audioExtension(contentType);
-    const audioPath = path.join(os.tmpdir(), `laptop-assistant-${id}${extension}`);
-    await fsp.writeFile(audioPath, audio);
-
+    const started = process.hrtime.bigint();
+    let audioPath;
     try {
-      return await new Promise((resolve, reject) => {
+      if (!Buffer.isBuffer(audio) || audio.length < 128) throw new Error("The microphone recording was empty.");
+      if (audio.length > 15_000_000) throw new Error("The microphone recording is too large. Keep voice commands under 30 seconds.");
+      await this.start();
+
+      const id = randomUUID();
+      const extension = audioExtension(contentType);
+      audioPath = path.join(os.tmpdir(), `laptop-assistant-${id}${extension}`);
+      await fsp.writeFile(audioPath, audio);
+
+      const result = await new Promise((resolve, reject) => {
         const timer = setTimeout(() => {
           this.pending.delete(id);
           reject(new Error("Local transcription timed out."));
@@ -49,8 +53,14 @@ export class LocalWhisper {
         this.pending.set(id, { resolve, reject, timer });
         this.process.stdin.write(`${JSON.stringify({ id, path: audioPath })}\n`);
       });
+      this.recordTranscription("success", started);
+      return result;
+    } catch (error) {
+      const outcome = /empty/i.test(error.message) ? "empty" : /timed out/i.test(error.message) ? "timeout" : "worker_error";
+      this.recordTranscription(outcome, started);
+      throw error;
     } finally {
-      await fsp.rm(audioPath, { force: true }).catch(() => {});
+      if (audioPath) await fsp.rm(audioPath, { force: true }).catch(() => {});
     }
   }
 
@@ -60,6 +70,20 @@ export class LocalWhisper {
     if (!fs.existsSync(this.pythonPath)) throw new Error("Local voice is not installed. Run setup-local-voice.cmd first.");
 
     this.startPromise = new Promise((resolve, reject) => {
+      const workerStarted = process.hrtime.bigint();
+      let startupRecorded = false;
+      const recordStartup = (outcome) => {
+        if (startupRecorded) return;
+        startupRecorded = true;
+        const seconds = Number(process.hrtime.bigint() - workerStarted) / 1_000_000_000;
+        this.metrics?.observeWhisperStartup(outcome, seconds);
+        this.logger?.info({
+          event: "whisper.worker.startup.completed",
+          outcome,
+          duration_ms: Math.round(seconds * 1000),
+          model: this.model,
+        });
+      };
       const child = spawn(this.pythonPath, [this.workerPath], {
         cwd: this.projectRoot,
         windowsHide: true,
@@ -82,6 +106,7 @@ export class LocalWhisper {
         startupSettled = true;
         clearTimeout(timer);
         this.startPromise = null;
+        recordStartup("error");
         reject(error);
       };
       const timer = setTimeout(() => {
@@ -97,6 +122,7 @@ export class LocalWhisper {
           startupSettled = true;
           this.ready = true;
           this.startPromise = null;
+          recordStartup("success");
           resolve();
           return;
         }
@@ -114,7 +140,7 @@ export class LocalWhisper {
         else pending.resolve({ text: message.text || "", language: message.language, duration_ms: message.duration_ms });
       });
 
-      child.stderr.on("data", (chunk) => console.error(`Whisper: ${chunk.toString().trim()}`));
+      child.stderr.on("data", () => this.logger?.warn({ event: "whisper.worker.stderr" }));
       child.on("exit", () => {
         failStartup(new Error("Local speech recognition stopped while starting."));
         this.ready = false;
@@ -132,6 +158,17 @@ export class LocalWhisper {
       });
     });
     return this.startPromise;
+  }
+
+  recordTranscription(outcome, started) {
+    const seconds = Number(process.hrtime.bigint() - started) / 1_000_000_000;
+    this.metrics?.observeWhisper(outcome, seconds);
+    this.logger?.info({
+      event: "whisper.transcription.completed",
+      outcome,
+      duration_ms: Math.round(seconds * 1000),
+      model: this.model,
+    });
   }
 }
 

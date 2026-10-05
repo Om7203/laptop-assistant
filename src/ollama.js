@@ -17,6 +17,8 @@ export class OllamaAssistant {
     timeoutMs = 120_000,
     keepAlive = "30m",
     contextSize = 8_192,
+    logger = null,
+    metrics = null,
   } = {}) {
     if (!runtime) throw new Error("A tool runtime is required.");
     this.runtime = runtime;
@@ -26,6 +28,8 @@ export class OllamaAssistant {
     this.timeoutMs = timeoutMs;
     this.keepAlive = keepAlive;
     this.contextSize = contextSize;
+    this.logger = logger;
+    this.metrics = metrics;
     this.messages = [{ role: "system", content: SYSTEM_PROMPT }];
     this.pendingApprovals = new Map();
     this.busy = false;
@@ -37,6 +41,7 @@ export class OllamaAssistant {
   }
 
   async warm() {
+    const started = process.hrtime.bigint();
     try {
       const response = await this.fetch(new URL("/api/chat", this.baseUrl), {
         method: "POST",
@@ -50,27 +55,37 @@ export class OllamaAssistant {
         }),
         signal: AbortSignal.timeout(this.timeoutMs),
       });
+      const outcome = response.ok ? "success" : "http_error";
+      this.recordRequest("warmup", outcome, started);
       return { ready: response.ok, message: response.ok ? "Model loaded." : `Ollama returned HTTP ${response.status}.` };
-    } catch {
+    } catch (error) {
+      this.recordRequest("warmup", transportOutcome(error), started);
       return { ready: false, message: `Ollama is not reachable at ${this.baseUrl}.` };
     }
   }
 
   async status() {
+    const started = process.hrtime.bigint();
     try {
       const response = await this.fetch(new URL("/api/tags", this.baseUrl), {
         signal: AbortSignal.timeout(3_000),
       });
-      if (!response.ok) return { reachable: false, model: this.model, message: `Ollama returned HTTP ${response.status}.` };
+      if (!response.ok) {
+        this.recordRequest("status", "http_error", started);
+        return { reachable: false, model: this.model, message: `Ollama returned HTTP ${response.status}.` };
+      }
       const payload = await response.json();
       const models = Array.isArray(payload.models) ? payload.models.map((item) => item.name || item.model).filter(Boolean) : [];
-      return {
+      const result = {
         reachable: true,
         model: this.model,
         model_available: models.some((name) => modelMatches(name, this.model)),
         installed_models: models,
       };
-    } catch {
+      this.recordRequest("status", "success", started);
+      return result;
+    } catch (error) {
+      this.recordRequest("status", transportOutcome(error), started);
       return {
         reachable: false,
         model: this.model,
@@ -155,6 +170,7 @@ export class OllamaAssistant {
   }
 
   async callOllama() {
+    const started = process.hrtime.bigint();
     let response;
     try {
       response = await this.fetch(new URL("/api/chat", this.baseUrl), {
@@ -174,7 +190,8 @@ export class OllamaAssistant {
         }),
         signal: AbortSignal.timeout(this.timeoutMs),
       });
-    } catch {
+    } catch (error) {
+      this.recordRequest("chat", transportOutcome(error), started);
       throw new ToolError(
         "ollama_unreachable",
         `Ollama is not reachable at ${this.baseUrl}. Start Ollama or configure the Linux server address.`,
@@ -185,11 +202,28 @@ export class OllamaAssistant {
     let payload;
     try { payload = JSON.parse(body); } catch { payload = null; }
     if (!response.ok) {
+      this.recordRequest("chat", "http_error", started);
       const detail = payload?.error || `Ollama returned HTTP ${response.status}.`;
       throw new ToolError("ollama_error", String(detail).slice(0, 500));
     }
-    if (!payload?.message) throw new ToolError("ollama_error", "Ollama returned an incomplete chat response.");
+    if (!payload?.message) {
+      this.recordRequest("chat", "invalid_response", started);
+      throw new ToolError("ollama_error", "Ollama returned an incomplete chat response.");
+    }
+    this.recordRequest("chat", "success", started);
     return payload;
+  }
+
+  recordRequest(operation, outcome, started) {
+    const seconds = Number(process.hrtime.bigint() - started) / 1_000_000_000;
+    this.metrics?.observeOllama(operation, outcome, seconds);
+    this.logger?.info({
+      event: "ollama.request.completed",
+      operation,
+      outcome,
+      duration_ms: Math.round(seconds * 1000),
+      model: this.model,
+    });
   }
 
   trimHistory() {
@@ -246,4 +280,8 @@ function instantReply(text) {
     return "Hi! How can I help?";
   }
   return null;
+}
+
+function transportOutcome(error) {
+  return new Set(["AbortError", "TimeoutError"]).has(error?.name) ? "timeout" : "unreachable";
 }

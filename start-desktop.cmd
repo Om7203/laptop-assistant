@@ -9,5 +9,6 @@ if not exist "%~dp0node_modules\electron\dist\electron.exe" (
   exit /b 1
 )
 
+if not defined LOG_DESTINATION set "LOG_DESTINATION=%~dp0logs\assistant.log"
 start "Laptop Assistant" "%~dp0node_modules\electron\dist\electron.exe" "%~dp0desktop\main.js"
 endlocal

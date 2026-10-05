@@ -3,6 +3,7 @@ $ErrorActionPreference = "Stop"
 $projectDirectory = Split-Path -Parent $MyInvocation.MyCommand.Path
 $serverScript = Join-Path $projectDirectory "src\server.js"
 $assistantUrl = "http://127.0.0.1:3199"
+if (-not $env:LOG_DESTINATION) { $env:LOG_DESTINATION = Join-Path $projectDirectory "logs\assistant.log" }
 
 function Get-AssistantHealth {
     try {
@@ -49,7 +50,7 @@ function Open-AssistantWindow {
 }
 
 $existingHealth = Get-AssistantHealth
-if ($existingHealth -and $existingHealth.api_version -eq 3) {
+if ($existingHealth -and $existingHealth.api_version -eq 4) {
     Open-AssistantWindow
     exit 0
 }
