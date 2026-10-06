@@ -2,13 +2,11 @@
 setlocal
 cd /d "%~dp0"
 
-if not exist "%~dp0node_modules\electron\dist\electron.exe" (
-  echo The desktop shell is not installed yet.
-  echo Double-click setup-desktop.cmd first.
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0launch-desktop.ps1"
+if errorlevel 1 (
+  echo.
+  echo Laptop Assistant could not start. The error is shown above.
   pause
   exit /b 1
 )
-
-if not defined LOG_DESTINATION set "LOG_DESTINATION=%~dp0logs\assistant.log"
-start "Laptop Assistant" "%~dp0node_modules\electron\dist\electron.exe" "%~dp0desktop\main.js"
 endlocal

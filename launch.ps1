@@ -50,7 +50,7 @@ function Open-AssistantWindow {
 }
 
 $existingHealth = Get-AssistantHealth
-if ($existingHealth -and $existingHealth.api_version -eq 4) {
+if ($existingHealth -and $existingHealth.api_version -eq 5) {
     Open-AssistantWindow
     exit 0
 }

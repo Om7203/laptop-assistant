@@ -94,7 +94,7 @@ const server = http.createServer(async (request, response) => {
     if (request.method === "GET" && request.url === "/api/health") {
       return json(response, 200, {
         status: "ok",
-        api_version: 4,
+        api_version: 5,
         backend: "ollama",
         ollama_model: localAssistant.model,
         realtime_configured: enableOpenAIRealtime && Boolean(openaiApiKey),

@@ -10,3 +10,4 @@ coverage/
 config/local.json
 config/*.dpapi
 config/*.pid
+config/electron-user-data/

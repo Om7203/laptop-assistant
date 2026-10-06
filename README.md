@@ -57,6 +57,8 @@ Whistle is experimental in this project. If it cannot start or transcribe a reco
 
 The desktop window runs the same local interface and permission-gated tools. Node integration is disabled in the window, browsing away from the local interface is blocked, and microphone access is allowed only for the local assistant origin. The original `start-assistant.cmd` browser launcher remains available.
 
+The desktop setup also grants Electron's runtime the Windows read permission required by its secure application sandbox. If Windows rejects that permission, the setup window explains that it must be run once with **Run as administrator**. Startup errors are retained in `logs/desktop-error.log` instead of disappearing with the launcher window.
+
 When Google Chrome is installed, the launcher opens the assistant in a standalone app-style window without normal browser tabs or an address bar. It falls back to the default browser otherwise.
 
 The interface is served only from `127.0.0.1`, so it is a local application page rather than a public website. The local server must stay running while the window is open. Messages are sent only to the configured Ollama server.

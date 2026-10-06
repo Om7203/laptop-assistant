@@ -1,9 +1,15 @@
 import { app, BrowserWindow, Menu, Tray, globalShortcut, nativeImage, session } from "electron";
+import fs from "node:fs";
+import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { startServer, stopServer } from "../src/server.js";
 
 const assistantUrl = "http://127.0.0.1:3199";
 const pushToTalkShortcut = "CommandOrControl+Shift+Space";
+const projectRoot = fileURLToPath(new URL("../", import.meta.url));
+const desktopDataPath = path.join(projectRoot, "config", "electron-user-data");
+fs.mkdirSync(desktopDataPath, { recursive: true });
+app.setPath("userData", desktopDataPath);
 let mainWindow;
 let tray;
 let quitting = false;
@@ -33,6 +39,14 @@ function createWindow() {
 
   mainWindow.loadURL(assistantUrl);
   mainWindow.once("ready-to-show", () => mainWindow.show());
+  mainWindow.webContents.on("did-fail-load", (_event, code, description) => {
+    console.error(`Laptop Assistant window failed to load (${code}): ${description}`);
+    app.exit(1);
+  });
+  mainWindow.webContents.on("render-process-gone", (_event, details) => {
+    console.error(`Laptop Assistant window stopped: ${details.reason}`);
+    app.exit(1);
+  });
   mainWindow.on("close", (event) => {
     if (quitting) return;
     event.preventDefault();
@@ -94,7 +108,7 @@ async function ensureServer() {
   try {
     const response = await fetch(`${assistantUrl}/api/health`, { signal: AbortSignal.timeout(1000) });
     const health = await response.json();
-    if (response.ok && health.api_version === 4) return;
+    if (response.ok && health.api_version === 5) return;
   } catch {
     // The desktop app owns the server when no compatible instance is already running.
   }
