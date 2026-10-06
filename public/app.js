@@ -1,3 +1,5 @@
+import { classifyVoiceControl, extractWakeCommand } from "./voice-control.js";
+
 const connectButton = document.querySelector("#connect-button");
 const speechToggle = document.querySelector("#speech-toggle");
 const statusDot = document.querySelector("#status-dot");
@@ -22,6 +24,7 @@ let localRecorder;
 let localRecordingChunks = [];
 let localStatusText = "Local AI ready";
 let handsFreeEnabled = false;
+let voiceAwake = false;
 let voiceBusy = false;
 let listeningPaused = false;
 let recordingShouldSend = false;
@@ -29,6 +32,7 @@ let audioContext;
 let analyser;
 let microphoneSource;
 let vadFrame;
+let speechMonitorFrame;
 let recordingStartedAt = 0;
 let speechCandidateAt = 0;
 let speechStartedAt = 0;
@@ -54,7 +58,7 @@ suggestions?.addEventListener("click", (event) => {
   commandForm.requestSubmit();
 });
 globalThis.desktopAssistant?.onPushToTalk(() => {
-  logActivity("Global push-to-talk shortcut pressed");
+  logActivity("Global voice shortcut pressed");
   void handleVoiceButton();
 });
 
@@ -121,6 +125,7 @@ async function handleVoiceButton() {
 async function startHandsFreeListening() {
   try {
     handsFreeEnabled = true;
+    voiceAwake = false;
     if (!microphoneStream) {
       microphoneStream = await navigator.mediaDevices.getUserMedia({
         audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 },
@@ -133,7 +138,7 @@ async function startHandsFreeListening() {
       microphoneSource.connect(analyser);
     }
     await beginListeningTurn();
-    logActivity("Hands-free listening enabled");
+    logActivity('Wake mode enabled · say “Hey Assistant”');
   } catch (error) {
     handsFreeEnabled = false;
     const message = friendlyConnectionError(error);
@@ -160,9 +165,10 @@ async function beginListeningTurn() {
   speechStartedAt = 0;
   lastSpeechAt = 0;
   connectButton.disabled = false;
-  connectButton.textContent = "Stop listening";
+  connectButton.textContent = "Turn off microphone";
   document.body.classList.add("listening");
-  setConnectionState("listening", "Listening · speak when ready");
+  document.body.classList.toggle("sleeping", !voiceAwake);
+  setConnectionState(voiceAwake ? "listening" : "sleeping", voiceAwake ? "Listening · speak when ready" : 'Sleeping · say “Hey Assistant”');
   monitorVoiceActivity();
 }
 
@@ -219,9 +225,11 @@ function finishListeningTurn(send) {
 
 function stopHandsFreeListening() {
   handsFreeEnabled = false;
+  voiceAwake = false;
   listeningPaused = false;
   recordingShouldSend = false;
   cancelAnimationFrame(vadFrame);
+  cancelAnimationFrame(speechMonitorFrame);
   if (localRecorder?.state === "recording") localRecorder.stop();
   microphoneStream?.getTracks().forEach((track) => track.stop());
   microphoneSource?.disconnect();
@@ -231,11 +239,11 @@ function stopHandsFreeListening() {
   analyser = null;
   audioContext = null;
   voiceBusy = false;
-  document.body.classList.remove("listening", "hearing", "working", "speaking");
+  document.body.classList.remove("listening", "hearing", "working", "speaking", "sleeping");
   connectButton.disabled = false;
-  connectButton.textContent = "Start listening";
+  connectButton.textContent = "Enable voice";
   setConnectionState("connected", localStatusText);
-  logActivity("Hands-free listening stopped");
+  logActivity("Microphone turned off");
 }
 
 async function transcribeLocalRecording() {
@@ -261,11 +269,10 @@ async function transcribeLocalRecording() {
     if (!response.ok) throw new Error(result.message || result.error || "Transcription failed.");
     const text = result.text?.trim();
     if (!text) throw new Error("I could not hear any speech. Please try again.");
-    addMessage("user", text);
     const backend = result.backend || "local speech";
     const fallback = result.fallback_from ? ` after ${result.fallback_from} fallback` : "";
     logActivity(`Transcribed with ${backend}${fallback} in ${result.duration_ms ?? "?"} ms`);
-    await sendLocalCommand(text);
+    await handleVoiceTranscript(text);
   } catch (error) {
     if (!/could not hear any speech/i.test(error.message)) addMessage("assistant", `Voice input failed: ${error.message}`);
     logActivity(`Voice input failed: ${error.message}`);
@@ -274,10 +281,68 @@ async function transcribeLocalRecording() {
     if (handsFreeEnabled) await beginListeningTurn();
     else {
       connectButton.disabled = false;
-      connectButton.textContent = "Start listening";
+      connectButton.textContent = "Enable voice";
       setConnectionState("connected", localStatusText);
     }
   }
+}
+
+async function handleVoiceTranscript(transcript) {
+  let text = transcript;
+  let control = classifyVoiceControl(text);
+
+  if (!voiceAwake) {
+    if (control.type === "microphone_off") {
+      addMessage("user", transcript);
+      addMessage("assistant", "Microphone off.");
+      stopHandsFreeListening();
+      return;
+    }
+    const wake = extractWakeCommand(text);
+    if (!wake.detected) {
+      logActivity("Speech ignored while sleeping (wake phrase not detected)");
+      return;
+    }
+    voiceAwake = true;
+    document.body.classList.remove("sleeping");
+    logActivity("Wake phrase detected");
+    if (!wake.command) {
+      addMessage("assistant", "Yes?");
+      await speakReply("Yes?");
+      return;
+    }
+    text = wake.command;
+    control = classifyVoiceControl(text);
+  }
+
+  if (control.type === "sleep") {
+    addMessage("user", transcript);
+    voiceAwake = false;
+    document.body.classList.add("sleeping");
+    addMessage("assistant", "Okay. I’ll wait for “Hey Assistant.”");
+    logActivity("Assistant entered sleep mode");
+    await speakReply("Okay. I’ll wait for Hey Assistant.");
+    return;
+  }
+
+  if (control.type === "microphone_off") {
+    addMessage("user", transcript);
+    addMessage("assistant", "Microphone off.");
+    await speakReply("Microphone off.");
+    stopHandsFreeListening();
+    return;
+  }
+
+  if (control.type === "stop_speaking" || control.type === "cancel") {
+    window.speechSynthesis?.cancel();
+    addMessage("user", transcript);
+    addMessage("assistant", control.type === "cancel" ? "Cancelled." : "Okay.");
+    logActivity(control.type === "cancel" ? "Current voice request cancelled" : "Spoken reply stopped");
+    return;
+  }
+
+  addMessage("user", text);
+  await sendLocalCommand(text);
 }
 
 function friendlyConnectionError(error) {
@@ -537,7 +602,7 @@ async function checkLocalBackend() {
     const voice = await fetch("/api/voice/status").then((response) => response.json());
     localVoiceInstalled = Boolean(voice.installed) && "MediaRecorder" in window && Boolean(navigator.mediaDevices?.getUserMedia);
     connectButton.disabled = !(openAIRealtimeAvailable || localVoiceInstalled);
-    connectButton.textContent = openAIRealtimeAvailable ? "Connect voice" : localVoiceInstalled ? "Start listening" : "Set up local mic";
+    connectButton.textContent = openAIRealtimeAvailable ? "Connect voice" : localVoiceInstalled ? "Enable voice" : "Set up local mic";
     logActivity(voice.installed ? `Local voice ready: ${voice.active_backend || voice.backend}` : (voice.message || "Local voice status checked"));
 
     const local = await fetch("/api/ollama/status").then((response) => response.json());
@@ -571,11 +636,55 @@ function speakReply(text) {
     window.speechSynthesis.cancel();
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.rate = 1.03;
-    utterance.onstart = () => setConnectionState("speaking", "Speaking…");
-    utterance.onend = resolve;
-    utterance.onerror = resolve;
+    let finished = false;
+    const finish = () => {
+      if (finished) return;
+      finished = true;
+      cancelAnimationFrame(speechMonitorFrame);
+      resolve();
+    };
+    utterance.onstart = () => {
+      setConnectionState("speaking", "Speaking · you can interrupt");
+      monitorForSpeechInterruption(() => {
+        logActivity("User interrupted the spoken reply");
+        window.speechSynthesis.cancel();
+        setConnectionState("hearing", "Interrupted · keep speaking");
+        finish();
+      });
+    };
+    utterance.onend = finish;
+    utterance.onerror = finish;
     window.speechSynthesis.speak(utterance);
   });
+}
+
+function monitorForSpeechInterruption(onInterrupt) {
+  cancelAnimationFrame(speechMonitorFrame);
+  if (!handsFreeEnabled || !analyser) return;
+  const samples = new Uint8Array(analyser.frequencyBinCount);
+  let candidateAt = 0;
+  const tick = (now) => {
+    if (!handsFreeEnabled || !window.speechSynthesis.speaking) return;
+    analyser.getByteTimeDomainData(samples);
+    let sum = 0;
+    for (const sample of samples) {
+      const centered = (sample - 128) / 128;
+      sum += centered * centered;
+    }
+    const level = Math.sqrt(sum / samples.length);
+    const threshold = Math.max(0.045, noiseFloor * 4.5);
+    if (level > threshold) {
+      if (!candidateAt) candidateAt = now;
+      if (now - candidateAt >= 260) {
+        onInterrupt();
+        return;
+      }
+    } else {
+      candidateAt = 0;
+    }
+    speechMonitorFrame = requestAnimationFrame(tick);
+  };
+  speechMonitorFrame = requestAnimationFrame(tick);
 }
 
 function scrollConversation() {

@@ -34,6 +34,7 @@ button { cursor: pointer; }
 .connection { gap: 10px; color: var(--muted); font-size: .9rem; }
 .status-dot { width: 8px; height: 8px; border-radius: 50%; background: #63706c; }
 .status-dot.connected, .status-dot.listening { background: var(--accent); box-shadow: 0 0 12px var(--accent); }
+.status-dot.sleeping { background: #a891ff; box-shadow: 0 0 12px #a891ff99; }
 .status-dot.hearing { background: #fff; box-shadow: 0 0 16px var(--accent); }
 .status-dot.working { background: var(--warn); box-shadow: 0 0 12px var(--warn); }
 .status-dot.speaking { background: #8ebcff; box-shadow: 0 0 14px #8ebcff; }
@@ -64,6 +65,7 @@ button:disabled { cursor: not-allowed; opacity: .45; }
 .meter { display: flex; align-items: center; gap: 5px; height: 82px; padding: 0 10px; }
 .meter span { width: 5px; height: 16px; border-radius: 9px; background: var(--accent); opacity: .65; transition: height .2s; }
 body.listening .meter span { animation: breathe 1.7s ease-in-out infinite alternate; }
+body.sleeping .meter span { height: 8px; opacity: .35; animation: sleeping 2.4s ease-in-out infinite alternate; background: #a891ff; }
 body.hearing .meter span { animation: pulse .55s ease-in-out infinite alternate; opacity: 1; }
 body.working .meter span { animation: working 1.1s ease-in-out infinite; background: var(--warn); }
 body.speaking .meter span { animation: pulse .72s ease-in-out infinite alternate; background: #8ebcff; }
@@ -73,6 +75,7 @@ body.speaking .meter span { animation: pulse .72s ease-in-out infinite alternate
 @keyframes pulse { to { height: 74px; opacity: 1; } }
 @keyframes breathe { to { height: 30px; opacity: .9; } }
 @keyframes working { 50% { transform: translateY(-10px); opacity: 1; } }
+@keyframes sleeping { to { height: 14px; opacity: .65; } }
 .workspace { flex: 1 1 auto; min-height: 0; display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(280px, .75fr); gap: 18px; margin-top: 18px; }
 .conversation-panel, .activity-panel { min-height: 0; overflow: hidden; border: 1px solid var(--line); border-radius: 24px; background: #0d1715db; }
 .conversation-panel { display: flex; flex-direction: column; }

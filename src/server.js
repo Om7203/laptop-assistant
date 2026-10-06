@@ -14,7 +14,7 @@ const sourceDirectory = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(sourceDirectory, "..");
 loadEnv(path.join(projectRoot, ".env"));
 const logger = createLogger();
-const metrics = new AssistantMetrics({ version: "0.5.0" });
+const metrics = new AssistantMetrics({ version: "0.6.0" });
 const enableOpenAIRealtime = process.env.ENABLE_OPENAI_REALTIME === "true";
 const openaiApiKey = enableOpenAIRealtime ? resolveOpenAIKey({ projectRoot }) : "";
 
@@ -70,7 +70,7 @@ const server = http.createServer(async (request, response) => {
     response.setHeader("X-Request-ID", requestId);
 
     if (request.method === "GET" && request.url === "/api/health/live") {
-      return json(response, 200, { status: "alive", uptime_seconds: Math.round(process.uptime()), version: "0.5.0" });
+      return json(response, 200, { status: "alive", uptime_seconds: Math.round(process.uptime()), version: "0.6.0" });
     }
 
     if (request.method === "GET" && request.url === "/api/health/ready") {

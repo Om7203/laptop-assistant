@@ -5,11 +5,12 @@ A security-first, local-first assistant for Windows. Ollama supplies the languag
 ## Current milestone
 
 - Typed conversations through Qwen3 on Ollama
-- Hands-free voice commands with automatic speech-end detection
+- Local wake phrase ("Hey Assistant") and automatic speech-end detection
+- Voice-controlled sleep, microphone shutdown, cancellation, and spoken-reply interruption
 - Local transcription through faster-whisper or Cactus Whistle
 - Spoken replies enabled by default using installed Windows voices
 - Native Windows desktop window with a system-tray menu
-- Global `Ctrl+Shift+Space` push-to-talk shortcut
+- Global `Ctrl+Shift+Space` voice on/off shortcut
 - Ollama can run on this Windows laptop or another machine on the private network
 - Multi-turn local tool calling
 - Instant local routing for common commands, without waiting for the language model
@@ -39,8 +40,10 @@ This is deliberately not an unrestricted shell. New capabilities should be added
 
 1. Double-click `setup-local-voice.cmd`. It creates an isolated Python environment inside the project, installs faster-whisper, and downloads the `base.en` speech model.
 2. Restart `start-assistant.cmd`.
-3. Select **Start listening** once, then speak naturally. The assistant detects when you finish, sends the command, speaks its answer, and resumes listening.
-4. Select **Stop listening** when you want to disable the microphone. **Voice replies** can also be turned off independently.
+3. Select **Enable voice** once. The assistant enters sleep mode and waits locally for “Hey Assistant.”
+4. Say “Hey Assistant, open calculator,” or say the wake phrase by itself and then give a follow-up command.
+5. Say “stop listening” or “go to sleep” to return to wake-only mode. Say “turn off the microphone” to release it completely.
+6. Speak over a long answer to interrupt it. **Voice replies** can also be turned off independently.
 
 Recorded audio is sent only to the local server, transcribed on this laptop, and deleted immediately after transcription. The persistent speech worker keeps the model loaded between commands for lower latency.
 
@@ -104,7 +107,7 @@ Local approval + tool server
         +----> Allowlisted laptop tools
 ```
 
-The interface uses local voice-activity detection to identify the start and end of each spoken command. It pauses the microphone while transcribing, thinking, and speaking so the assistant does not hear its own reply, then resumes listening automatically. A persistent local speech worker keeps the transcription model loaded between commands. Whistle is the low-latency option and faster-whisper remains the fallback.
+The interface uses local voice-activity detection to identify the start and end of each spoken command. In sleep mode, transcripts without the wake phrase are discarded locally and never sent to the language model. During a spoken reply, a higher-threshold interruption detector lets the user stop the reply without allowing the assistant to react normally to its own voice. A persistent local speech worker keeps the transcription model loaded between commands. Whistle is the low-latency option and faster-whisper remains the fallback.
 
 ## Security model
 
@@ -134,7 +137,7 @@ See [OBSERVABILITY.md](OBSERVABILITY.md) for the metric catalog, initial SLOs, p
 ## Roadmap
 
 1. Add Prometheus and Grafana dashboards, alert rules, and distributed traces.
-2. Add an optional local wake word and background activation.
+2. Replace transcript-based wake detection with a dedicated low-power wake-word model.
 3. Add screen understanding and safe browser automation.
 4. Add reminders, memory, calendar, and email connectors.
 5. Package a signed installer and add automatic updates.

@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { startServer, stopServer } from "../src/server.js";
 
 const assistantUrl = "http://127.0.0.1:3199";
-const pushToTalkShortcut = "CommandOrControl+Shift+Space";
+const voiceShortcut = "CommandOrControl+Shift+Space";
 const projectRoot = fileURLToPath(new URL("../", import.meta.url));
 const desktopDataPath = path.join(projectRoot, "config", "electron-user-data");
 fs.mkdirSync(desktopDataPath, { recursive: true });
@@ -83,7 +83,7 @@ function createTray() {
   tray.setToolTip("Laptop Assistant");
   tray.setContextMenu(Menu.buildFromTemplate([
     { label: "Open Assistant", click: showWindow },
-    { label: `Push to talk (${pushToTalkShortcut.replace("CommandOrControl", "Ctrl")})`, click: requestPushToTalk },
+    { label: `Toggle voice (${voiceShortcut.replace("CommandOrControl", "Ctrl")})`, click: requestPushToTalk },
     { type: "separator" },
     { label: "Quit", click: () => { quitting = true; app.quit(); } },
   ]));
@@ -121,8 +121,8 @@ if (hasSingleInstanceLock) app.whenReady().then(async () => {
   await ensureServer();
   createWindow();
   createTray();
-  const registered = globalShortcut.register(pushToTalkShortcut, requestPushToTalk);
-  if (!registered) console.warn(`Could not register ${pushToTalkShortcut}; it may be used by another application.`);
+  const registered = globalShortcut.register(voiceShortcut, requestPushToTalk);
+  if (!registered) console.warn(`Could not register ${voiceShortcut}; it may be used by another application.`);
 }).catch((error) => {
   console.error("Laptop Assistant desktop startup failed:", error);
   app.exit(1);
