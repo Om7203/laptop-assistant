@@ -32,6 +32,38 @@ test("answers a simple greeting without invoking the model", async () => {
   assert.equal(calls, 0);
 });
 
+test("routes a common application command without model latency", async () => {
+  let calls = 0;
+  const requested = [];
+  const runtime = {
+    request: async (name, args) => {
+      requested.push({ name, args });
+      return { status: "completed", message: "Opened calculator." };
+    },
+  };
+  const assistant = new OllamaAssistant({
+    runtime,
+    fetchImpl: async () => { calls += 1; throw new Error("should not be called"); },
+  });
+  const result = await assistant.send("Please open the calculator.");
+  assert.equal(result.message, "Opened calculator.");
+  assert.equal(result.model, "local-command-router");
+  assert.deepEqual(requested, [{ name: "open_application", args: { application: "calculator" } }]);
+  assert.equal(calls, 0);
+});
+
+test("describes installed capabilities without invoking the model", async () => {
+  let calls = 0;
+  const runtime = new ToolRuntime({ projectRoot: process.cwd() });
+  const assistant = new OllamaAssistant({
+    runtime,
+    fetchImpl: async () => { calls += 1; throw new Error("should not be called"); },
+  });
+  const result = await assistant.send("What can you do?");
+  assert.match(result.message, /Calculator|Voice input/);
+  assert.equal(calls, 0);
+});
+
 test("executes an automatic tool and sends its result back to Ollama", async () => {
   const requests = [];
   const assistant = createAssistant([
@@ -45,7 +77,7 @@ test("executes an automatic tool and sends its result back to Ollama", async () 
     { message: { role: "assistant", content: "I checked the local time." } },
   ], requests);
 
-  const result = await assistant.send("What time is it?");
+  const result = await assistant.send("Use the appropriate tool to determine the local time.");
   assert.equal(result.message, "I checked the local time.");
   assert.ok(requests[1].messages.some((message) => message.role === "tool" && message.tool_name === "get_local_time"));
 });

@@ -20,7 +20,7 @@
         <div class="connection">
           <span id="status-dot" class="status-dot"></span>
           <span id="status-label">Checking local AI…</span>
-          <button id="speech-toggle" class="ghost" aria-pressed="false">Voice replies: Off</button>
+          <button id="speech-toggle" class="ghost" aria-pressed="true">Voice replies: On</button>
           <button id="connect-button" class="primary" disabled>Local mic next</button>
         </div>
       </header>
@@ -28,8 +28,8 @@
       <section class="hero">
         <div>
           <p class="eyebrow">LOCAL AI + SAFE ACTIONS</p>
-          <h2>Ask naturally. Stay in control.</h2>
-          <p class="lede">The assistant can answer, report progress, and use approved tools on this laptop. Sensitive actions wait for you.</p>
+          <h2>Your private copilot.</h2>
+          <p class="lede">Speak naturally, pause when you are finished, and the assistant responds. Local tools stay permissioned and private.</p>
         </div>
         <div class="meter" aria-label="Voice activity">
           <span></span><span></span><span></span><span></span><span></span><span></span><span></span>
@@ -41,8 +41,14 @@
           <div id="conversation" class="conversation" aria-live="polite">
             <article class="message assistant">
               <span class="message-label">ASSISTANT</span>
-              <p>I’m ready. Type a request, and optionally enable spoken replies.</p>
+              <p>I’m ready. Start listening and speak naturally—I’ll detect when you finish. You can also type below.</p>
             </article>
+            <div id="suggestions" class="suggestions" aria-label="Suggested commands">
+              <button type="button" data-prompt="What can you do?">What can you do?</button>
+              <button type="button" data-prompt="Give me my system status">System status</button>
+              <button type="button" data-prompt="Open calculator">Open calculator</button>
+              <button type="button" data-prompt="What time is it?">Current time</button>
+            </div>
           </div>
           <form id="command-form" class="composer">
             <label class="sr-only" for="command-input">Type a command</label>

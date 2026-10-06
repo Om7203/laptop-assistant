@@ -9,18 +9,36 @@ const conversation = document.querySelector("#conversation");
 const activity = document.querySelector("#activity");
 const approvals = document.querySelector("#approvals");
 const clearActivity = document.querySelector("#clear-activity");
+const suggestions = document.querySelector("#suggestions");
 
 let peerConnection;
 let dataChannel;
 let microphoneStream;
 let assistantDraft = "";
 let openAIRealtimeAvailable = false;
-let speechRepliesEnabled = false;
+let speechRepliesEnabled = "speechSynthesis" in window;
 let localVoiceInstalled = false;
 let localRecorder;
 let localRecordingChunks = [];
-let localRecordingTimer;
 let localStatusText = "Local AI ready";
+let handsFreeEnabled = false;
+let voiceBusy = false;
+let listeningPaused = false;
+let recordingShouldSend = false;
+let audioContext;
+let analyser;
+let microphoneSource;
+let vadFrame;
+let recordingStartedAt = 0;
+let speechCandidateAt = 0;
+let speechStartedAt = 0;
+let lastSpeechAt = 0;
+let noiseFloor = 0.006;
+
+const SILENCE_TO_SEND_MS = 950;
+const SPEECH_CONFIRM_MS = 160;
+const MIN_SPEECH_MS = 260;
+const MAX_RECORDING_MS = 30_000;
 
 checkLocalBackend();
 speechToggle.addEventListener("click", toggleSpeechReplies);
@@ -29,6 +47,12 @@ if (!("speechSynthesis" in window)) speechToggle.disabled = true;
 connectButton.addEventListener("click", handleVoiceButton);
 commandForm.addEventListener("submit", sendTextCommand);
 clearActivity.addEventListener("click", () => (activity.innerHTML = ""));
+suggestions?.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-prompt]");
+  if (!button) return;
+  commandInput.value = button.dataset.prompt;
+  commandForm.requestSubmit();
+});
 globalThis.desktopAssistant?.onPushToTalk(() => {
   logActivity("Global push-to-talk shortcut pressed");
   void handleVoiceButton();
@@ -90,53 +114,142 @@ async function handleVoiceButton() {
     return;
   }
   if (!localVoiceInstalled) return;
-  if (localRecorder?.state === "recording") stopLocalRecording();
-  else await startLocalRecording();
+  if (handsFreeEnabled) stopHandsFreeListening();
+  else await startHandsFreeListening();
 }
 
-async function startLocalRecording() {
+async function startHandsFreeListening() {
   try {
-    microphoneStream = await navigator.mediaDevices.getUserMedia({
-      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
-    });
-    const preferredType = ["audio/webm;codecs=opus", "audio/webm", "audio/ogg;codecs=opus"]
-      .find((type) => MediaRecorder.isTypeSupported(type));
-    localRecordingChunks = [];
-    localRecorder = new MediaRecorder(microphoneStream, preferredType ? { mimeType: preferredType } : undefined);
-    localRecorder.addEventListener("dataavailable", (event) => {
-      if (event.data.size) localRecordingChunks.push(event.data);
-    });
-    localRecorder.addEventListener("stop", transcribeLocalRecording, { once: true });
-    localRecorder.start();
-    connectButton.textContent = "Stop & send";
-    document.body.classList.add("listening");
-    setConnectionState("connected", "Listening…");
-    logActivity("Local microphone recording started");
-    localRecordingTimer = setTimeout(stopLocalRecording, 30_000);
+    handsFreeEnabled = true;
+    if (!microphoneStream) {
+      microphoneStream = await navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 },
+      });
+      audioContext = new AudioContext();
+      analyser = audioContext.createAnalyser();
+      analyser.fftSize = 1024;
+      analyser.smoothingTimeConstant = 0.35;
+      microphoneSource = audioContext.createMediaStreamSource(microphoneStream);
+      microphoneSource.connect(analyser);
+    }
+    await beginListeningTurn();
+    logActivity("Hands-free listening enabled");
   } catch (error) {
+    handsFreeEnabled = false;
     const message = friendlyConnectionError(error);
     addMessage("assistant", `Microphone failed: ${message}`);
     logActivity(`Microphone failed: ${message}`);
   }
 }
 
-function stopLocalRecording() {
+async function beginListeningTurn() {
+  if (!handsFreeEnabled || voiceBusy || listeningPaused || !microphoneStream) return;
+  window.speechSynthesis?.cancel();
+  const preferredType = ["audio/webm;codecs=opus", "audio/webm", "audio/ogg;codecs=opus"]
+    .find((type) => MediaRecorder.isTypeSupported(type));
+  localRecordingChunks = [];
+  recordingShouldSend = false;
+  localRecorder = new MediaRecorder(microphoneStream, preferredType ? { mimeType: preferredType } : undefined);
+  localRecorder.addEventListener("dataavailable", (event) => {
+    if (event.data.size) localRecordingChunks.push(event.data);
+  });
+  localRecorder.addEventListener("stop", transcribeLocalRecording, { once: true });
+  localRecorder.start(250);
+  recordingStartedAt = performance.now();
+  speechCandidateAt = 0;
+  speechStartedAt = 0;
+  lastSpeechAt = 0;
+  connectButton.disabled = false;
+  connectButton.textContent = "Stop listening";
+  document.body.classList.add("listening");
+  setConnectionState("listening", "Listening · speak when ready");
+  monitorVoiceActivity();
+}
+
+function monitorVoiceActivity() {
+  cancelAnimationFrame(vadFrame);
+  const samples = new Uint8Array(analyser.frequencyBinCount);
+  const tick = (now) => {
+    if (!handsFreeEnabled || voiceBusy || localRecorder?.state !== "recording") return;
+    analyser.getByteTimeDomainData(samples);
+    let sum = 0;
+    for (const sample of samples) {
+      const centered = (sample - 128) / 128;
+      sum += centered * centered;
+    }
+    const level = Math.sqrt(sum / samples.length);
+    if (!speechStartedAt) noiseFloor = Math.min(0.03, noiseFloor * 0.98 + Math.min(level, 0.03) * 0.02);
+    const threshold = Math.max(0.016, noiseFloor * 2.8);
+
+    if (level > threshold) {
+      if (!speechCandidateAt) speechCandidateAt = now;
+      if (!speechStartedAt && now - speechCandidateAt >= SPEECH_CONFIRM_MS) {
+        speechStartedAt = speechCandidateAt;
+        setConnectionState("hearing", "I hear you…");
+      }
+      if (speechStartedAt) lastSpeechAt = now;
+    } else {
+      speechCandidateAt = 0;
+    }
+
+    if (speechStartedAt && now - lastSpeechAt >= SILENCE_TO_SEND_MS && lastSpeechAt - speechStartedAt >= MIN_SPEECH_MS) {
+      finishListeningTurn(true);
+      return;
+    }
+    if (now - recordingStartedAt >= MAX_RECORDING_MS) {
+      finishListeningTurn(Boolean(speechStartedAt));
+      return;
+    }
+    vadFrame = requestAnimationFrame(tick);
+  };
+  vadFrame = requestAnimationFrame(tick);
+}
+
+function finishListeningTurn(send) {
+  cancelAnimationFrame(vadFrame);
   if (localRecorder?.state !== "recording") return;
-  clearTimeout(localRecordingTimer);
-  connectButton.disabled = true;
-  connectButton.textContent = "Transcribing…";
-  setConnectionState("connecting", "Transcribing locally…");
+  recordingShouldSend = send;
+  voiceBusy = send;
+  if (send) {
+    connectButton.textContent = "Understanding…";
+    setConnectionState("working", "Understanding…");
+  }
   localRecorder.stop();
+}
+
+function stopHandsFreeListening() {
+  handsFreeEnabled = false;
+  listeningPaused = false;
+  recordingShouldSend = false;
+  cancelAnimationFrame(vadFrame);
+  if (localRecorder?.state === "recording") localRecorder.stop();
+  microphoneStream?.getTracks().forEach((track) => track.stop());
+  microphoneSource?.disconnect();
+  void audioContext?.close();
+  microphoneStream = null;
+  microphoneSource = null;
+  analyser = null;
+  audioContext = null;
+  voiceBusy = false;
+  document.body.classList.remove("listening", "hearing", "working", "speaking");
+  connectButton.disabled = false;
+  connectButton.textContent = "Start listening";
+  setConnectionState("connected", localStatusText);
+  logActivity("Hands-free listening stopped");
 }
 
 async function transcribeLocalRecording() {
   const type = localRecorder?.mimeType || localRecordingChunks[0]?.type || "audio/webm";
   const recording = new Blob(localRecordingChunks, { type });
-  microphoneStream?.getTracks().forEach((track) => track.stop());
-  microphoneStream = null;
   localRecorder = null;
   localRecordingChunks = [];
   document.body.classList.remove("listening");
+
+  if (!recordingShouldSend) {
+    voiceBusy = false;
+    if (handsFreeEnabled && !listeningPaused) await beginListeningTurn();
+    return;
+  }
 
   try {
     const response = await fetch("/api/transcribe", {
@@ -154,12 +267,16 @@ async function transcribeLocalRecording() {
     logActivity(`Transcribed with ${backend}${fallback} in ${result.duration_ms ?? "?"} ms`);
     await sendLocalCommand(text);
   } catch (error) {
-    addMessage("assistant", `Voice input failed: ${error.message}`);
+    if (!/could not hear any speech/i.test(error.message)) addMessage("assistant", `Voice input failed: ${error.message}`);
     logActivity(`Voice input failed: ${error.message}`);
   } finally {
-    connectButton.disabled = false;
-    connectButton.textContent = "Push to talk";
-    setConnectionState("connected", localStatusText);
+    voiceBusy = false;
+    if (handsFreeEnabled) await beginListeningTurn();
+    else {
+      connectButton.disabled = false;
+      connectButton.textContent = "Start listening";
+      setConnectionState("connected", localStatusText);
+    }
   }
 }
 
@@ -210,13 +327,39 @@ async function sendTextCommand(event) {
     return;
   }
 
-  await sendLocalCommand(text);
+  const resumeListening = handsFreeEnabled;
+  if (resumeListening) await pauseHandsFreeForTypedCommand();
+  try {
+    await sendLocalCommand(text);
+  } finally {
+    if (resumeListening && handsFreeEnabled) {
+      listeningPaused = false;
+      voiceBusy = false;
+      await beginListeningTurn();
+    }
+  }
+}
+
+async function pauseHandsFreeForTypedCommand() {
+  listeningPaused = true;
+  voiceBusy = true;
+  recordingShouldSend = false;
+  cancelAnimationFrame(vadFrame);
+  if (localRecorder?.state !== "recording") return;
+  await new Promise((resolve) => {
+    localRecorder.addEventListener("stop", resolve, { once: true });
+    localRecorder.stop();
+  });
+  voiceBusy = true;
 }
 
 async function sendLocalCommand(text) {
+  const started = performance.now();
   commandInput.disabled = true;
   sendButton.disabled = true;
-  logActivity("Local model is thinking");
+  setConnectionState("working", "Working on it…");
+  const workingMessage = addMessage("assistant", "Working on that…", { transient: true });
+  logActivity("Assistant is working");
   try {
     let result = await postJson("/api/chat", { message: text });
     while (result.status === "approval_required") {
@@ -224,15 +367,20 @@ async function sendLocalCommand(text) {
       result = await waitForApproval(result, true);
     }
     const reply = result.message || "Done.";
+    workingMessage.remove();
     addMessage("assistant", reply);
-    speakReply(reply);
-    logActivity(`Answered locally with ${result.model || "Ollama"}`);
+    logActivity(`Answered with ${result.model || "Ollama"} in ${Math.round(performance.now() - started)} ms`);
+    commandInput.disabled = false;
+    sendButton.disabled = false;
+    await speakReply(reply);
   } catch (error) {
+    workingMessage.remove();
     addMessage("assistant", `Local assistant error: ${error.message}`);
     logActivity(`Local assistant error: ${error.message}`);
   } finally {
     commandInput.disabled = false;
     sendButton.disabled = false;
+    if (!handsFreeEnabled) setConnectionState("connected", localStatusText);
     commandInput.focus();
   }
 }
@@ -328,9 +476,10 @@ async function postJson(url, payload) {
   return result;
 }
 
-function addMessage(role, text) {
+function addMessage(role, text, { transient = false } = {}) {
   const article = document.createElement("article");
   article.className = `message ${role}`;
+  if (transient) article.classList.add("transient");
   const label = document.createElement("span");
   label.className = "message-label";
   label.textContent = role === "user" ? "YOU" : "ASSISTANT";
@@ -338,7 +487,7 @@ function addMessage(role, text) {
   paragraph.textContent = text;
   article.append(label, paragraph);
   conversation.append(article);
-  conversation.scrollTop = conversation.scrollHeight;
+  scrollConversation();
   return article;
 }
 
@@ -349,6 +498,7 @@ function updateAssistantDraft(text) {
     draft.classList.add("draft");
   }
   draft.querySelector("p").textContent = text;
+  scrollConversation();
 }
 
 function finalizeAssistantDraft(text) {
@@ -356,6 +506,7 @@ function finalizeAssistantDraft(text) {
   if (draft) {
     draft.classList.remove("draft");
     draft.querySelector("p").textContent = text;
+    scrollConversation();
   } else {
     addMessage("assistant", text);
   }
@@ -373,7 +524,10 @@ function logActivity(text) {
 
 function setConnectionState(state, label) {
   statusLabel.textContent = label;
-  statusDot.classList.toggle("live", state === "connected");
+  statusDot.className = `status-dot ${state}`;
+  document.body.classList.toggle("hearing", state === "hearing");
+  document.body.classList.toggle("working", state === "working");
+  document.body.classList.toggle("speaking", state === "speaking");
 }
 
 async function checkLocalBackend() {
@@ -383,7 +537,7 @@ async function checkLocalBackend() {
     const voice = await fetch("/api/voice/status").then((response) => response.json());
     localVoiceInstalled = Boolean(voice.installed) && "MediaRecorder" in window && Boolean(navigator.mediaDevices?.getUserMedia);
     connectButton.disabled = !(openAIRealtimeAvailable || localVoiceInstalled);
-    connectButton.textContent = openAIRealtimeAvailable ? "Connect voice" : localVoiceInstalled ? "Push to talk" : "Set up local mic";
+    connectButton.textContent = openAIRealtimeAvailable ? "Connect voice" : localVoiceInstalled ? "Start listening" : "Set up local mic";
     logActivity(voice.installed ? `Local voice ready: ${voice.active_backend || voice.backend}` : (voice.message || "Local voice status checked"));
 
     const local = await fetch("/api/ollama/status").then((response) => response.json());
@@ -412,11 +566,20 @@ function toggleSpeechReplies() {
 }
 
 function speakReply(text) {
-  if (!speechRepliesEnabled || !("speechSynthesis" in window)) return;
-  window.speechSynthesis.cancel();
-  const utterance = new SpeechSynthesisUtterance(text);
-  utterance.rate = 1;
-  window.speechSynthesis.speak(utterance);
+  if (!speechRepliesEnabled || !("speechSynthesis" in window)) return Promise.resolve();
+  return new Promise((resolve) => {
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.rate = 1.03;
+    utterance.onstart = () => setConnectionState("speaking", "Speaking…");
+    utterance.onend = resolve;
+    utterance.onerror = resolve;
+    window.speechSynthesis.speak(utterance);
+  });
+}
+
+function scrollConversation() {
+  requestAnimationFrame(() => conversation.scrollTo({ top: conversation.scrollHeight, behavior: "smooth" }));
 }
 
 function friendlyName(name = "tool") {

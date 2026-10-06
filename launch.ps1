@@ -14,6 +14,33 @@ function Get-AssistantHealth {
     }
 }
 
+function Start-LocalOllamaIfNeeded {
+    $environmentFile = Join-Path $projectDirectory ".env"
+    $configuredUrl = "http://127.0.0.1:11434"
+    if (Test-Path -LiteralPath $environmentFile) {
+        $match = Select-String -LiteralPath $environmentFile -Pattern '^OLLAMA_BASE_URL=(.+)$' | Select-Object -First 1
+        if ($match) { $configuredUrl = $match.Matches[0].Groups[1].Value.Trim().TrimEnd('/') }
+    }
+    $uri = $null
+    if (-not [Uri]::TryCreate($configuredUrl, [UriKind]::Absolute, [ref]$uri)) { return }
+    if ($uri.Host -notin @("127.0.0.1", "localhost", "::1")) { return }
+    try {
+        Invoke-RestMethod -Uri "$configuredUrl/api/tags" -TimeoutSec 2 | Out-Null
+        return
+    } catch { }
+    $ollamaApp = Join-Path $env:LOCALAPPDATA "Programs\Ollama\ollama app.exe"
+    if (-not (Test-Path -LiteralPath $ollamaApp)) { return }
+    Write-Host "Starting Windows Ollama..."
+    Start-Process -FilePath $ollamaApp -WindowStyle Hidden
+    for ($attempt = 0; $attempt -lt 40; $attempt++) {
+        Start-Sleep -Milliseconds 250
+        try {
+            Invoke-RestMethod -Uri "$configuredUrl/api/tags" -TimeoutSec 1 | Out-Null
+            return
+        } catch { }
+    }
+}
+
 function Get-AssistantListenerProcess {
     $listener = Get-NetTCPConnection -LocalAddress "127.0.0.1" -LocalPort 3199 -State Listen -ErrorAction SilentlyContinue |
         Select-Object -First 1
@@ -50,7 +77,8 @@ function Open-AssistantWindow {
 }
 
 $existingHealth = Get-AssistantHealth
-if ($existingHealth -and $existingHealth.api_version -eq 5) {
+Start-LocalOllamaIfNeeded
+if ($existingHealth -and $existingHealth.api_version -eq 6) {
     Open-AssistantWindow
     exit 0
 }

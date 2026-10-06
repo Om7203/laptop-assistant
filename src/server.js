@@ -14,7 +14,7 @@ const sourceDirectory = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(sourceDirectory, "..");
 loadEnv(path.join(projectRoot, ".env"));
 const logger = createLogger();
-const metrics = new AssistantMetrics({ version: "0.4.0" });
+const metrics = new AssistantMetrics({ version: "0.5.0" });
 const enableOpenAIRealtime = process.env.ENABLE_OPENAI_REALTIME === "true";
 const openaiApiKey = enableOpenAIRealtime ? resolveOpenAIKey({ projectRoot }) : "";
 
@@ -30,6 +30,8 @@ const localAssistant = new OllamaAssistant({
   runtime,
   baseUrl: process.env.OLLAMA_BASE_URL || "http://127.0.0.1:11434",
   model: process.env.OLLAMA_MODEL || "qwen3:4b-instruct-2507-q4_K_M",
+  keepAlive: process.env.OLLAMA_KEEP_ALIVE || "-1",
+  contextSize: numberFromEnv(process.env.OLLAMA_CONTEXT_SIZE, 4_096),
   logger,
   metrics,
 });
@@ -68,7 +70,7 @@ const server = http.createServer(async (request, response) => {
     response.setHeader("X-Request-ID", requestId);
 
     if (request.method === "GET" && request.url === "/api/health/live") {
-      return json(response, 200, { status: "alive", uptime_seconds: Math.round(process.uptime()), version: "0.4.0" });
+      return json(response, 200, { status: "alive", uptime_seconds: Math.round(process.uptime()), version: "0.5.0" });
     }
 
     if (request.method === "GET" && request.url === "/api/health/ready") {
@@ -94,11 +96,12 @@ const server = http.createServer(async (request, response) => {
     if (request.method === "GET" && request.url === "/api/health") {
       return json(response, 200, {
         status: "ok",
-        api_version: 5,
+        api_version: 6,
         backend: "ollama",
         ollama_model: localAssistant.model,
         realtime_configured: enableOpenAIRealtime && Boolean(openaiApiKey),
-        model: process.env.OPENAI_REALTIME_MODEL || "gpt-realtime-2.1",
+        model: localAssistant.model,
+        realtime_model: process.env.OPENAI_REALTIME_MODEL || "gpt-realtime-2.1",
         last_session_error: lastSessionError,
       });
     }

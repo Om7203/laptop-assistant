@@ -1,10 +1,13 @@
 import { TOOL_DEFINITIONS, ToolError } from "./tools.js";
 
 const SYSTEM_PROMPT = [
-  "You are a concise, dependable assistant running locally for the user.",
+  "You are the user's private, capable laptop assistant, running locally.",
+  "Respond naturally and directly, remember the recent conversation, and behave like an assistant rather than a search box.",
   "Use the supplied tools when they are relevant.",
   "Never claim an action succeeded until its tool result confirms success.",
   "Sensitive actions require approval in the interface.",
+  "When useful, end with one short, relevant suggestion for what you can do next, but do not repeat generic offers of help.",
+  "Proactively mention a limitation when a requested capability is not installed, and suggest the safest practical next step.",
   "Never request passwords, API keys, authentication codes, or payment details.",
 ].join(" ");
 
@@ -15,8 +18,8 @@ export class OllamaAssistant {
     model = "qwen3:4b",
     fetchImpl = globalThis.fetch,
     timeoutMs = 120_000,
-    keepAlive = "30m",
-    contextSize = 8_192,
+    keepAlive = "-1",
+    contextSize = 4_096,
     logger = null,
     metrics = null,
   } = {}) {
@@ -26,7 +29,7 @@ export class OllamaAssistant {
     this.model = model;
     this.fetch = fetchImpl;
     this.timeoutMs = timeoutMs;
-    this.keepAlive = keepAlive;
+    this.keepAlive = normalizeKeepAlive(keepAlive);
     this.contextSize = contextSize;
     this.logger = logger;
     this.metrics = metrics;
@@ -98,6 +101,8 @@ export class OllamaAssistant {
     const message = typeof text === "string" ? text.trim() : "";
     if (!message || message.length > 20_000) throw new ToolError("invalid_message", "Enter a message under 20,000 characters.");
     if (this.pendingApprovals.size) throw new ToolError("approval_pending", "Approve or deny the pending action first.");
+    const command = await fastCommand(message, this.runtime);
+    if (command) return { status: "completed", ...command, model: "local-command-router" };
     const instant = instantReply(message);
     if (instant) return { status: "completed", message: instant, model: "local-fast-path" };
     return this.withLock(async () => {
@@ -256,6 +261,12 @@ function normalizeBaseUrl(value) {
   return parsed.toString();
 }
 
+function normalizeKeepAlive(value) {
+  const normalized = String(value ?? "").trim();
+  if (/^-?\d+$/.test(normalized)) return Number.parseInt(normalized, 10);
+  return normalized || "30m";
+}
+
 function normalizeAssistantMessage(message) {
   return {
     role: "assistant",
@@ -279,7 +290,39 @@ function instantReply(text) {
   if (new Set(["hi", "hello", "hey", "hi there", "hello there", "good morning", "good afternoon", "good evening"]).has(normalized)) {
     return "Hi! How can I help?";
   }
+  if (new Set(["help", "what can you do", "what can you do for me", "show capabilities", "show me what you can do"]).has(normalized)) {
+    return [
+      "I can answer questions and maintain a conversation using your local Qwen model.",
+      "I can open Calculator, Notepad, Paint, Settings, and File Explorer; report the time and system status; list files in approved folders; and open websites after you approve them.",
+      "Voice input and spoken replies run locally. Try saying: “Open calculator” or “Give me my system status.”",
+    ].join("\n\n");
+  }
   return null;
+}
+
+async function fastCommand(text, runtime) {
+  const normalized = text.toLowerCase().replace(/[!.,?]+$/g, "").replace(/\s+/g, " ").trim();
+  const appMatch = normalized.match(/^(?:please )?(?:open|launch|start)(?: the)? (calculator|notepad|paint|settings|file explorer|explorer)$/);
+  if (appMatch) {
+    const application = appMatch[1] === "file explorer" ? "explorer" : appMatch[1];
+    const result = await runtime.request("open_application", { application });
+    return { message: result.message || `Opened ${application}.` };
+  }
+  if (/^(?:please )?(?:tell me )?(?:what(?:'s| is) the time|what time is it|current time)$/.test(normalized)) {
+    const result = await runtime.request("get_local_time", {});
+    return { message: `It’s ${new Date(result.iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}.` };
+  }
+  if (/^(?:please )?(?:give me |show me |check )?(?:my |the )?(?:system status|computer status|laptop status)$/.test(normalized)) {
+    const result = await runtime.request("get_system_status", {});
+    return { message: `Your laptop has ${result.cpu_count} CPU threads and is using ${result.memory_used_gb} GB of ${result.memory_total_gb} GB memory. It has been running for ${formatUptime(result.uptime_seconds)}.` };
+  }
+  return null;
+}
+
+function formatUptime(seconds) {
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  return hours ? `${hours}h ${minutes}m` : `${minutes}m`;
 }
 
 function transportOutcome(error) {

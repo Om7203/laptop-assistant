@@ -5,12 +5,15 @@ A security-first, local-first assistant for Windows. Ollama supplies the languag
 ## Current milestone
 
 - Typed conversations through Qwen3 on Ollama
-- Push-to-talk voice commands transcribed locally with faster-whisper or Cactus Whistle
-- Optional spoken replies using installed Windows browser voices
+- Hands-free voice commands with automatic speech-end detection
+- Local transcription through faster-whisper or Cactus Whistle
+- Spoken replies enabled by default using installed Windows voices
 - Native Windows desktop window with a system-tray menu
 - Global `Ctrl+Shift+Space` push-to-talk shortcut
 - Ollama can run on this Windows laptop or another machine on the private network
 - Multi-turn local tool calling
+- Instant local routing for common commands, without waiting for the language model
+- Automatic local Ollama startup when the assistant launches
 - Visible progress updates
 - Local system status and time tools
 - Directory listing restricted to configured roots
@@ -36,8 +39,8 @@ This is deliberately not an unrestricted shell. New capabilities should be added
 
 1. Double-click `setup-local-voice.cmd`. It creates an isolated Python environment inside the project, installs faster-whisper, and downloads the `base.en` speech model.
 2. Restart `start-assistant.cmd`.
-3. Select **Push to talk**, speak a command, and select **Stop & send**. Recording stops automatically after 30 seconds.
-4. Turn on **Voice replies** if you want the assistant to read its answers aloud.
+3. Select **Start listening** once, then speak naturally. The assistant detects when you finish, sends the command, speaks its answer, and resumes listening.
+4. Select **Stop listening** when you want to disable the microphone. **Voice replies** can also be turned off independently.
 
 Recorded audio is sent only to the local server, transcribed on this laptop, and deleted immediately after transcription. The persistent speech worker keeps the model loaded between commands for lower latency.
 
@@ -53,11 +56,11 @@ Whistle is experimental in this project. If it cannot start or transcribe a reco
 2. Double-click `setup-desktop.cmd` once. This installs the pinned Electron desktop runtime inside the project.
 3. Double-click `start-desktop.cmd` whenever you want to run the assistant.
 4. Close the window to keep the assistant available in the Windows system tray. Use the tray menu to reopen or quit it.
-5. Press `Ctrl+Shift+Space` anywhere to start recording. Press it again to stop and send the recording.
+5. Press `Ctrl+Shift+Space` anywhere to turn hands-free listening on or off.
 
 The desktop window runs the same local interface and permission-gated tools. Node integration is disabled in the window, browsing away from the local interface is blocked, and microphone access is allowed only for the local assistant origin. The original `start-assistant.cmd` browser launcher remains available.
 
-The desktop setup also grants Electron's runtime the Windows read permission required by its secure application sandbox. If Windows rejects that permission, the setup window explains that it must be run once with **Run as administrator**. Startup errors are retained in `logs/desktop-error.log` instead of disappearing with the launcher window.
+The desktop setup also grants Electron's runtime the Windows read permission required by its secure application sandbox. If Windows rejects that permission, the setup window explains that it must be run once with **Run as administrator**. Startup errors are retained as timestamped `logs/desktop-error-*.log` files instead of disappearing with the launcher window.
 
 When Google Chrome is installed, the launcher opens the assistant in a standalone app-style window without normal browser tabs or an address bar. It falls back to the default browser otherwise.
 
@@ -101,7 +104,7 @@ Local approval + tool server
         +----> Allowlisted laptop tools
 ```
 
-The interface records push-to-talk microphone commands and transcribes them through a persistent local speech worker. Whistle is the low-latency option and faster-whisper remains the fallback. Replies can be spoken using the operating system's installed browser voices. A future milestone can add a wake word and hands-free turn detection.
+The interface uses local voice-activity detection to identify the start and end of each spoken command. It pauses the microphone while transcribing, thinking, and speaking so the assistant does not hear its own reply, then resumes listening automatically. A persistent local speech worker keeps the transcription model loaded between commands. Whistle is the low-latency option and faster-whisper remains the fallback.
 
 ## Security model
 
@@ -131,7 +134,7 @@ See [OBSERVABILITY.md](OBSERVABILITY.md) for the metric catalog, initial SLOs, p
 ## Roadmap
 
 1. Add Prometheus and Grafana dashboards, alert rules, and distributed traces.
-2. Add a local wake word and hands-free turn detection.
+2. Add an optional local wake word and background activation.
 3. Add screen understanding and safe browser automation.
 4. Add reminders, memory, calendar, and email connectors.
 5. Package a signed installer and add automatic updates.
@@ -139,6 +142,8 @@ See [OBSERVABILITY.md](OBSERVABILITY.md) for the metric catalog, initial SLOs, p
 ## Configuration
 
 `OLLAMA_BASE_URL` selects the Ollama server. `OLLAMA_MODEL` selects the installed model. The defaults are `http://127.0.0.1:11434` and `qwen3:4b-instruct-2507-q4_K_M`.
+
+`OLLAMA_KEEP_ALIVE` controls how long the model stays loaded; `-1` keeps it resident for faster follow-up turns. `OLLAMA_CONTEXT_SIZE` defaults to `4096` to reduce local processing overhead while retaining useful conversation context.
 
 `WHISPER_MODEL`, `WHISPER_DEVICE`, and `WHISPER_COMPUTE_TYPE` customize local transcription. The reliable defaults are `base.en`, `cpu`, and `int8`.
 

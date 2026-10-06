@@ -108,7 +108,7 @@ async function ensureServer() {
   try {
     const response = await fetch(`${assistantUrl}/api/health`, { signal: AbortSignal.timeout(1000) });
     const health = await response.json();
-    if (response.ok && health.api_version === 5) return;
+    if (response.ok && health.api_version === 6) return;
   } catch {
     // The desktop app owns the server when no compatible instance is already running.
   }
