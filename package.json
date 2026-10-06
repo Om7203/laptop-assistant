@@ -1,6 +1,6 @@
 {
   "name": "laptop-assistant",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "private": true,
   "description": "A local-first, permissioned laptop assistant for Windows.",
   "main": "desktop/main.js",
@@ -11,10 +11,6 @@
     "dev": "node --watch src/server.js",
     "test": "node test/all.test.js"
   },
-  "dependencies": {
-    "@prometheus-io/client": "0.16.1",
-    "pino": "10.3.1"
-  },
   "devDependencies": {
     "electron": "44.5.1"
   },
@@ -22,7 +18,7 @@
     "node": ">=22"
   },
   "dependencies": {
-    "@prometheus-io/client": "^0.16.1",
-    "pino": "^10.3.1"
+    "@prometheus-io/client": "0.16.1",
+    "pino": "10.3.1"
   }
 }

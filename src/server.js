@@ -8,13 +8,13 @@ import { AssistantMetrics, createLogger, normalizeRoute } from "./observability.
 import { OllamaAssistant } from "./ollama.js";
 import { resolveOpenAIKey } from "./secrets.js";
 import { TOOL_DEFINITIONS, ToolError, ToolRuntime } from "./tools.js";
-import { LocalWhisper } from "./whisper.js";
+import { LocalSpeechRecognition, parseKeywords } from "./speech.js";
 
 const sourceDirectory = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(sourceDirectory, "..");
 loadEnv(path.join(projectRoot, ".env"));
 const logger = createLogger();
-const metrics = new AssistantMetrics({ version: "0.3.0" });
+const metrics = new AssistantMetrics({ version: "0.4.0" });
 const enableOpenAIRealtime = process.env.ENABLE_OPENAI_REALTIME === "true";
 const openaiApiKey = enableOpenAIRealtime ? resolveOpenAIKey({ projectRoot }) : "";
 
@@ -33,9 +33,11 @@ const localAssistant = new OllamaAssistant({
   logger,
   metrics,
 });
-const localWhisper = new LocalWhisper({
+const localSpeech = new LocalSpeechRecognition({
   projectRoot,
-  model: process.env.WHISPER_MODEL || "base.en",
+  backend: process.env.STT_BACKEND || "faster-whisper",
+  whisperModel: process.env.WHISPER_MODEL || "base.en",
+  keywords: parseKeywords(process.env.STT_KEYWORDS || "Laptop Assistant,Ollama,Qwen,Notepad,Calculator"),
   logger,
   metrics,
 });
@@ -66,18 +68,18 @@ const server = http.createServer(async (request, response) => {
     response.setHeader("X-Request-ID", requestId);
 
     if (request.method === "GET" && request.url === "/api/health/live") {
-      return json(response, 200, { status: "alive", uptime_seconds: Math.round(process.uptime()), version: "0.3.0" });
+      return json(response, 200, { status: "alive", uptime_seconds: Math.round(process.uptime()), version: "0.4.0" });
     }
 
     if (request.method === "GET" && request.url === "/api/health/ready") {
       const ollama = await localAssistant.status();
-      const voice = localWhisper.status();
+      const voice = localSpeech.status();
       const ready = Boolean(ollama.reachable && ollama.model_available);
       return json(response, ready ? 200 : 503, {
         status: ready ? "ready" : "not_ready",
         components: {
           ollama: { ready, reachable: ollama.reachable, model_available: ollama.model_available, model: ollama.model },
-          whisper: { ready: voice.installed, installed: voice.installed, worker_loaded: voice.ready, model: voice.model },
+          speech: { ready: voice.installed, installed: voice.installed, worker_loaded: voice.ready, backend: voice.active_backend, model: voice.model },
         },
       });
     }
@@ -106,7 +108,7 @@ const server = http.createServer(async (request, response) => {
     }
 
     if (request.method === "GET" && request.url === "/api/voice/status") {
-      return json(response, 200, localWhisper.status());
+      return json(response, 200, localSpeech.status());
     }
 
     if (request.method === "POST" && request.url === "/api/transcribe") {
@@ -115,7 +117,7 @@ const server = http.createServer(async (request, response) => {
         return json(response, 415, { error: "unsupported_audio", message: "An audio recording is required." });
       }
       const audio = await readBuffer(request, 15_000_000);
-      const result = await localWhisper.transcribe(audio, contentType);
+      const result = await localSpeech.transcribe(audio, contentType);
       return json(response, 200, { status: "completed", ...result });
     }
 

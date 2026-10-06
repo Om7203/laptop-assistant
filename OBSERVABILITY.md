@@ -10,7 +10,7 @@ Laptop Assistant treats observability as part of the product. Telemetry is local
 | `/api/health/ready` | Dependency readiness | HTTP 200 when Ollama is reachable and the configured model is installed |
 | `/metrics` | Prometheus scrape endpoint | HTTP 200 with Prometheus text exposition |
 
-Whisper is reported as a separate readiness component because typed chat remains useful when local speech is not installed. The legacy `/api/health` endpoint remains available to the interface.
+Speech recognition is reported as a separate readiness component because typed chat remains useful when local speech is not installed. Its status names the selected backend and exposes both provider states. The legacy `/api/health` endpoint remains available to the interface.
 
 ## Metric catalog
 
@@ -18,8 +18,8 @@ Application metrics use the `laptop_assistant_` prefix:
 
 - `http_requests_total`, `http_request_duration_seconds`, and `http_requests_in_flight`
 - `ollama_requests_total` and `ollama_request_duration_seconds`
-- `whisper_transcriptions_total` and `whisper_transcription_duration_seconds`
-- `whisper_startup_duration_seconds`
+- `speech_transcriptions_total` and `speech_transcription_duration_seconds`, labelled by the bounded backend name
+- `speech_worker_startup_duration_seconds`, labelled by the bounded backend name
 - `tool_executions_total`
 - `approval_decisions_total`
 - `build_info`
@@ -36,8 +36,9 @@ Logs are newline-delimited JSON. Important event names include:
 - `http.request.completed`
 - `http.request.failed`
 - `ollama.request.completed`
-- `whisper.worker.startup.completed`
-- `whisper.transcription.completed`
+- `speech.worker.startup.completed`
+- `speech.transcription.completed`
+- `speech.fallback.activated`
 - `tool.execution.completed`
 
 Known secret and content fields are automatically redacted. HTTP logs contain only the request ID, method, normalized route, status code, and duration. The launchers write to `logs/assistant.log`; the directory is ignored by Git.
@@ -47,10 +48,10 @@ Known secret and content fields are automatically redacted. HTTP logs contain on
 These are engineering targets, not claims about historical production traffic:
 
 - 99.5% successful local API requests when required dependencies are healthy.
-- P95 server overhead below 100 ms, excluding Ollama inference and Whisper transcription.
+- P95 server overhead below 100 ms, excluding Ollama inference and speech transcription.
 - P95 liveness response below 250 ms.
 - No secret or conversation content in logs or metric labels.
-- Every failed Ollama, Whisper, and tool operation produces a bounded outcome metric.
+- Every failed Ollama, speech, and tool operation produces a bounded outcome metric.
 
 The Grafana phase will turn these into recording rules, dashboards, and alerts after enough local baseline data exists.
 
@@ -73,10 +74,11 @@ The Grafana phase will turn these into recording rules, dashboards, and alerts a
 
 ### Voice input fails
 
-1. Inspect `components.whisper` in the readiness response.
-2. Run `setup-local-voice.cmd` if the model is not installed.
-3. Check `whisper.worker.startup.completed` and `whisper.transcription.completed` outcomes.
-4. Confirm Windows microphone permission and that another application is not holding the device.
+1. Inspect `components.speech` in the readiness response and `/api/voice/status` for both provider states.
+2. Run `setup-local-voice.cmd` if faster-whisper is not installed; run `setup-whistle.cmd` for Whistle.
+3. Check `speech.worker.startup.completed`, `speech.transcription.completed`, and `speech.fallback.activated` outcomes.
+4. Set `STT_BACKEND=faster-whisper` to isolate a Whistle-specific failure.
+5. Confirm Windows microphone permission and that another application is not holding the device.
 
 ### Tool failures increase
 

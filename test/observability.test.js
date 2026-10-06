@@ -13,10 +13,13 @@ test("exports Prometheus metrics without request identifiers", async () => {
   const finish = metrics.startHttp("POST", "/api/chat?message=private");
   finish(200);
   metrics.observeOllama("chat", "success", 0.25);
+  metrics.observeSpeech("whistle", "success", 0.05);
   const output = await metrics.render();
   assert.match(output, /laptop_assistant_http_requests_total/);
   assert.match(output, /route="\/api\/chat"/);
   assert.match(output, /laptop_assistant_ollama_request_duration_seconds/);
+  assert.match(output, /laptop_assistant_speech_transcription_duration_seconds/);
+  assert.match(output, /backend="whistle"/);
   assert.doesNotMatch(output, /private|request_id|message=/);
 });
 

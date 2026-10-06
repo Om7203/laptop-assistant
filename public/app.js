@@ -149,7 +149,9 @@ async function transcribeLocalRecording() {
     const text = result.text?.trim();
     if (!text) throw new Error("I could not hear any speech. Please try again.");
     addMessage("user", text);
-    logActivity(`Transcribed locally in ${result.duration_ms ?? "?"} ms`);
+    const backend = result.backend || "local speech";
+    const fallback = result.fallback_from ? ` after ${result.fallback_from} fallback` : "";
+    logActivity(`Transcribed with ${backend}${fallback} in ${result.duration_ms ?? "?"} ms`);
     await sendLocalCommand(text);
   } catch (error) {
     addMessage("assistant", `Voice input failed: ${error.message}`);
@@ -382,7 +384,7 @@ async function checkLocalBackend() {
     localVoiceInstalled = Boolean(voice.installed) && "MediaRecorder" in window && Boolean(navigator.mediaDevices?.getUserMedia);
     connectButton.disabled = !(openAIRealtimeAvailable || localVoiceInstalled);
     connectButton.textContent = openAIRealtimeAvailable ? "Connect voice" : localVoiceInstalled ? "Push to talk" : "Set up local mic";
-    logActivity(voice.message || "Local voice status checked");
+    logActivity(voice.installed ? `Local voice ready: ${voice.active_backend || voice.backend}` : (voice.message || "Local voice status checked"));
 
     const local = await fetch("/api/ollama/status").then((response) => response.json());
     if (!local.reachable) {

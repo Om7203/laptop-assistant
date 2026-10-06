@@ -83,23 +83,23 @@ export class AssistantMetrics {
       buckets: [0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60, 120],
       registers,
     });
-    this.whisperRequests = new Counter({
-      name: "laptop_assistant_whisper_transcriptions_total",
-      help: "Local Whisper transcription attempts.",
-      labelNames: ["outcome"],
+    this.speechRequests = new Counter({
+      name: "laptop_assistant_speech_transcriptions_total",
+      help: "Local speech transcription attempts.",
+      labelNames: ["backend", "outcome"],
       registers,
     });
-    this.whisperDuration = new Histogram({
-      name: "laptop_assistant_whisper_transcription_duration_seconds",
+    this.speechDuration = new Histogram({
+      name: "laptop_assistant_speech_transcription_duration_seconds",
       help: "End-to-end local transcription duration in seconds.",
-      labelNames: ["outcome"],
+      labelNames: ["backend", "outcome"],
       buckets: [0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60, 90],
       registers,
     });
-    this.whisperStartupDuration = new Histogram({
-      name: "laptop_assistant_whisper_startup_duration_seconds",
-      help: "Whisper worker startup duration in seconds.",
-      labelNames: ["outcome"],
+    this.speechStartupDuration = new Histogram({
+      name: "laptop_assistant_speech_worker_startup_duration_seconds",
+      help: "Speech worker startup duration in seconds.",
+      labelNames: ["backend", "outcome"],
       buckets: [0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60, 90],
       registers,
     });
@@ -144,14 +144,20 @@ export class AssistantMetrics {
     this.ollamaDuration.observe(labels, seconds);
   }
 
-  observeWhisper(outcome, seconds) {
-    const labels = { outcome: knownValue(outcome, ["success", "empty", "timeout", "worker_error"], "error") };
-    this.whisperRequests.inc(labels);
-    this.whisperDuration.observe(labels, seconds);
+  observeSpeech(backend, outcome, seconds) {
+    const labels = {
+      backend: knownValue(backend, ["faster-whisper", "whistle"], "unknown"),
+      outcome: knownValue(outcome, ["success", "empty", "timeout", "worker_error"], "error"),
+    };
+    this.speechRequests.inc(labels);
+    this.speechDuration.observe(labels, seconds);
   }
 
-  observeWhisperStartup(outcome, seconds) {
-    this.whisperStartupDuration.observe({ outcome: outcome === "success" ? "success" : "error" }, seconds);
+  observeSpeechStartup(backend, outcome, seconds) {
+    this.speechStartupDuration.observe({
+      backend: knownValue(backend, ["faster-whisper", "whistle"], "unknown"),
+      outcome: outcome === "success" ? "success" : "error",
+    }, seconds);
   }
 
   observeTool(tool, outcome) {

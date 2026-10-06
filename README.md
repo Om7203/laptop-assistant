@@ -5,7 +5,7 @@ A security-first, local-first assistant for Windows. Ollama supplies the languag
 ## Current milestone
 
 - Typed conversations through Qwen3 on Ollama
-- Push-to-talk voice commands transcribed locally with faster-whisper
+- Push-to-talk voice commands transcribed locally with faster-whisper or Cactus Whistle
 - Optional spoken replies using installed Windows browser voices
 - Native Windows desktop window with a system-tray menu
 - Global `Ctrl+Shift+Space` push-to-talk shortcut
@@ -40,6 +40,12 @@ This is deliberately not an unrestricted shell. New capabilities should be added
 4. Turn on **Voice replies** if you want the assistant to read its answers aloud.
 
 Recorded audio is sent only to the local server, transcribed on this laptop, and deleted immediately after transcription. The persistent speech worker keeps the model loaded between commands for lower latency.
+
+### Try the faster Whistle backend
+
+After the local voice setup above, double-click `setup-whistle.cmd`. It installs the pinned Cactus runtime, downloads Whistle, disables its optional telemetry, and changes `STT_BACKEND` to `whistle` in the private `.env` file. Restart the assistant afterward.
+
+Whistle is experimental in this project. If it cannot start or transcribe a recording, the server automatically retries that recording with faster-whisper. Set `STT_BACKEND=faster-whisper` to return to the established backend, or `STT_BACKEND=auto` to prefer Whistle only when it is installed. `STT_KEYWORDS` is a comma-separated list of product and application names that Whistle should favour.
 
 ## Run the native desktop version
 
@@ -93,7 +99,7 @@ Local approval + tool server
         +----> Allowlisted laptop tools
 ```
 
-The interface records push-to-talk microphone commands and transcribes them through a persistent local faster-whisper worker. Replies can be spoken using the operating system's installed browser voices. A future milestone can add a wake word and hands-free turn detection.
+The interface records push-to-talk microphone commands and transcribes them through a persistent local speech worker. Whistle is the low-latency option and faster-whisper remains the fallback. Replies can be spoken using the operating system's installed browser voices. A future milestone can add a wake word and hands-free turn detection.
 
 ## Security model
 
@@ -113,7 +119,7 @@ See [SECURITY.md](SECURITY.md) before adding tools.
 The local server exposes operational endpoints on the same loopback-only address:
 
 - `GET /api/health/live` confirms that the process is running.
-- `GET /api/health/ready` checks whether Ollama and the configured model are available and reports Whisper separately.
+- `GET /api/health/ready` checks whether Ollama and the configured model are available and reports local speech separately.
 - `GET /metrics` returns Prometheus-compatible process and application metrics.
 
 Every HTTP response includes an `X-Request-ID`. Structured logs connect that identifier to request duration and outcome without recording prompts, transcripts, URLs, file paths, API keys, or authorization values. The Windows launchers write JSON logs to `logs/assistant.log`, which remains excluded from Git.
@@ -133,6 +139,8 @@ See [OBSERVABILITY.md](OBSERVABILITY.md) for the metric catalog, initial SLOs, p
 `OLLAMA_BASE_URL` selects the Ollama server. `OLLAMA_MODEL` selects the installed model. The defaults are `http://127.0.0.1:11434` and `qwen3:4b-instruct-2507-q4_K_M`.
 
 `WHISPER_MODEL`, `WHISPER_DEVICE`, and `WHISPER_COMPUTE_TYPE` customize local transcription. The reliable defaults are `base.en`, `cpu`, and `int8`.
+
+`STT_BACKEND` selects `faster-whisper`, `whistle`, or `auto`. `STT_KEYWORDS` supplies up to 50 comma-separated terms for Whistle keyword biasing. Whistle telemetry is disabled by the application.
 
 `ASSISTANT_ALLOWED_ROOTS` accepts absolute paths separated by semicolons. The project directory is always allowed. Directory traversal and symbolic-link escapes are rejected.
 
