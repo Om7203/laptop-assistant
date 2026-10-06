@@ -27,7 +27,7 @@ test("answers a simple greeting without invoking the model", async () => {
     fetchImpl: async () => { calls += 1; throw new Error("should not be called"); },
   });
   const result = await assistant.send("Hi!");
-  assert.equal(result.message, "Hi! How can I help?");
+  assert.equal(result.message, "Hi, I’m Goffy. What can I do for you?");
   assert.equal(result.model, "local-fast-path");
   assert.equal(calls, 0);
 });

@@ -1,11 +1,12 @@
-# Laptop Assistant
+# Goffy
 
-A security-first, local-first assistant for Windows. Ollama supplies the language model without a paid API, while an approval-aware server controls which actions can run on the laptop.
+Goffy is a security-first, local-first female voice assistant for Windows. Ollama supplies the language model without a paid API, while an approval-aware server controls which actions can run on the laptop.
 
 ## Current milestone
 
 - Typed conversations through Qwen3 on Ollama
-- Local wake phrase ("Hey Assistant") and automatic speech-end detection
+- Local wake phrase ("Hey Goffy") and automatic speech-end detection
+- Automatic selection of a locally installed female English voice
 - Voice-controlled sleep, microphone shutdown, cancellation, and spoken-reply interruption
 - Local transcription through faster-whisper or Cactus Whistle
 - Spoken replies enabled by default using installed Windows voices
@@ -40,8 +41,8 @@ This is deliberately not an unrestricted shell. New capabilities should be added
 
 1. Double-click `setup-local-voice.cmd`. It creates an isolated Python environment inside the project, installs faster-whisper, and downloads the `base.en` speech model.
 2. Restart `start-assistant.cmd`.
-3. Select **Enable voice** once. The assistant enters sleep mode and waits locally for “Hey Assistant.”
-4. Say “Hey Assistant, open calculator,” or say the wake phrase by itself and then give a follow-up command.
+3. Select **Enable voice** once. Goffy enters sleep mode and waits locally for “Hey Goffy.”
+4. Say “Hey Goffy, open calculator,” or say the wake phrase by itself and then give a follow-up command.
 5. Say “stop listening” or “go to sleep” to return to wake-only mode. Say “turn off the microphone” to release it completely.
 6. Speak over a long answer to interrupt it. **Voice replies** can also be turned off independently.
 
@@ -107,7 +108,7 @@ Local approval + tool server
         +----> Allowlisted laptop tools
 ```
 
-The interface uses local voice-activity detection to identify the start and end of each spoken command. In sleep mode, transcripts without the wake phrase are discarded locally and never sent to the language model. During a spoken reply, a higher-threshold interruption detector lets the user stop the reply without allowing the assistant to react normally to its own voice. A persistent local speech worker keeps the transcription model loaded between commands. Whistle is the low-latency option and faster-whisper remains the fallback.
+The interface uses local voice-activity detection to identify the start and end of each spoken command. In sleep mode, transcripts without the wake phrase are discarded locally and never sent to the language model. During a spoken reply, echo cancellation plus a dedicated interruption detector lets the user cut Goffy off; she immediately stops speaking and opens a new listening turn. A persistent local speech worker keeps the transcription model loaded between commands. Whistle is the low-latency option and faster-whisper remains the fallback.
 
 ## Security model
 
@@ -147,6 +148,8 @@ See [OBSERVABILITY.md](OBSERVABILITY.md) for the metric catalog, initial SLOs, p
 `OLLAMA_BASE_URL` selects the Ollama server. `OLLAMA_MODEL` selects the installed model. The defaults are `http://127.0.0.1:11434` and `qwen3:4b-instruct-2507-q4_K_M`.
 
 `OLLAMA_KEEP_ALIVE` controls how long the model stays loaded; `-1` keeps it resident for faster follow-up turns. `OLLAMA_CONTEXT_SIZE` defaults to `4096` to reduce local processing overhead while retaining useful conversation context.
+
+`OLLAMA_MAX_TOKENS` defaults to `256`, keeping normal voice answers concise and reducing local generation delay.
 
 `WHISPER_MODEL`, `WHISPER_DEVICE`, and `WHISPER_COMPUTE_TYPE` customize local transcription. The reliable defaults are `base.en`, `cpu`, and `int8`.
 

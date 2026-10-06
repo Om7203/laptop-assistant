@@ -1,4 +1,4 @@
-const WAKE_PHRASES = ["hey laptop assistant", "hey assistant", "okay assistant", "ok assistant", "laptop assistant"];
+const WAKE_PHRASES = ["hey goffy", "hey goofy", "okay goffy", "okay goofy", "ok goffy", "ok goofy", "goffy", "goofy", "hey assistant", "okay assistant"];
 
 export function classifyVoiceControl(text) {
   const normalized = normalizeVoiceText(text);

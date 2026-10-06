@@ -46,7 +46,7 @@ export class AssistantMetrics {
     const registers = [this.registry];
     this.buildInfo = new Gauge({
       name: "laptop_assistant_build_info",
-      help: "Build information for Laptop Assistant.",
+      help: "Build information for Goffy.",
       labelNames: ["version"],
       registers,
     });

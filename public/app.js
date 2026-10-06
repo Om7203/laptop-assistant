@@ -19,9 +19,14 @@ let microphoneStream;
 let assistantDraft = "";
 let openAIRealtimeAvailable = false;
 let speechRepliesEnabled = "speechSynthesis" in window;
+let preferredSpeechVoice;
+let announcedSpeechVoice = "";
 let localVoiceInstalled = false;
 let localRecorder;
 let localRecordingChunks = [];
+let interruptionRecorder;
+let interruptionChunks = [];
+let interruptionPromoted = false;
 let localStatusText = "Local AI ready";
 let handsFreeEnabled = false;
 let voiceAwake = false;
@@ -39,12 +44,14 @@ let speechStartedAt = 0;
 let lastSpeechAt = 0;
 let noiseFloor = 0.006;
 
-const SILENCE_TO_SEND_MS = 950;
-const SPEECH_CONFIRM_MS = 160;
-const MIN_SPEECH_MS = 260;
+const SILENCE_TO_SEND_MS = 700;
+const SPEECH_CONFIRM_MS = 100;
+const MIN_SPEECH_MS = 180;
 const MAX_RECORDING_MS = 30_000;
 
 checkLocalBackend();
+refreshSpeechVoice();
+window.speechSynthesis?.addEventListener?.("voiceschanged", refreshSpeechVoice);
 speechToggle.addEventListener("click", toggleSpeechReplies);
 if (!("speechSynthesis" in window)) speechToggle.disabled = true;
 
@@ -138,7 +145,7 @@ async function startHandsFreeListening() {
       microphoneSource.connect(analyser);
     }
     await beginListeningTurn();
-    logActivity('Wake mode enabled · say “Hey Assistant”');
+    logActivity('Wake mode enabled · say “Hey Goffy”');
   } catch (error) {
     handsFreeEnabled = false;
     const message = friendlyConnectionError(error);
@@ -149,6 +156,7 @@ async function startHandsFreeListening() {
 
 async function beginListeningTurn() {
   if (!handsFreeEnabled || voiceBusy || listeningPaused || !microphoneStream) return;
+  if (localRecorder?.state === "recording") return;
   window.speechSynthesis?.cancel();
   const preferredType = ["audio/webm;codecs=opus", "audio/webm", "audio/ogg;codecs=opus"]
     .find((type) => MediaRecorder.isTypeSupported(type));
@@ -168,7 +176,7 @@ async function beginListeningTurn() {
   connectButton.textContent = "Turn off microphone";
   document.body.classList.add("listening");
   document.body.classList.toggle("sleeping", !voiceAwake);
-  setConnectionState(voiceAwake ? "listening" : "sleeping", voiceAwake ? "Listening · speak when ready" : 'Sleeping · say “Hey Assistant”');
+  setConnectionState(voiceAwake ? "listening" : "sleeping", voiceAwake ? "Goffy is listening" : 'Sleeping · say “Hey Goffy”');
   monitorVoiceActivity();
 }
 
@@ -230,6 +238,7 @@ function stopHandsFreeListening() {
   recordingShouldSend = false;
   cancelAnimationFrame(vadFrame);
   cancelAnimationFrame(speechMonitorFrame);
+  stopInterruptionCapture();
   if (localRecorder?.state === "recording") localRecorder.stop();
   microphoneStream?.getTracks().forEach((track) => track.stop());
   microphoneSource?.disconnect();
@@ -250,6 +259,7 @@ async function transcribeLocalRecording() {
   const type = localRecorder?.mimeType || localRecordingChunks[0]?.type || "audio/webm";
   const recording = new Blob(localRecordingChunks, { type });
   localRecorder = null;
+  interruptionPromoted = false;
   localRecordingChunks = [];
   document.body.classList.remove("listening");
 
@@ -307,8 +317,8 @@ async function handleVoiceTranscript(transcript) {
     document.body.classList.remove("sleeping");
     logActivity("Wake phrase detected");
     if (!wake.command) {
-      addMessage("assistant", "Yes?");
-      await speakReply("Yes?");
+      addMessage("assistant", "Yes, I’m listening.");
+      await speakReply("Yes, I’m listening.");
       return;
     }
     text = wake.command;
@@ -319,9 +329,9 @@ async function handleVoiceTranscript(transcript) {
     addMessage("user", transcript);
     voiceAwake = false;
     document.body.classList.add("sleeping");
-    addMessage("assistant", "Okay. I’ll wait for “Hey Assistant.”");
+    addMessage("assistant", "Okay. I’ll wait for “Hey Goffy.”");
     logActivity("Assistant entered sleep mode");
-    await speakReply("Okay. I’ll wait for Hey Assistant.");
+    await speakReply("Okay. I’ll wait for Hey Goffy.");
     return;
   }
 
@@ -547,7 +557,7 @@ function addMessage(role, text, { transient = false } = {}) {
   if (transient) article.classList.add("transient");
   const label = document.createElement("span");
   label.className = "message-label";
-  label.textContent = role === "user" ? "YOU" : "ASSISTANT";
+  label.textContent = role === "user" ? "YOU" : "GOFFY";
   const paragraph = document.createElement("p");
   paragraph.textContent = text;
   article.append(label, paragraph);
@@ -625,7 +635,7 @@ async function checkLocalBackend() {
 function toggleSpeechReplies() {
   speechRepliesEnabled = !speechRepliesEnabled;
   speechToggle.setAttribute("aria-pressed", String(speechRepliesEnabled));
-  speechToggle.textContent = `Voice replies: ${speechRepliesEnabled ? "On" : "Off"}`;
+  speechToggle.textContent = `Goffy voice: ${speechRepliesEnabled ? "On" : "Off"}`;
   if (!speechRepliesEnabled) window.speechSynthesis.cancel();
   logActivity(`Spoken replies ${speechRepliesEnabled ? "enabled" : "disabled"}`);
 }
@@ -635,27 +645,87 @@ function speakReply(text) {
   return new Promise((resolve) => {
     window.speechSynthesis.cancel();
     const utterance = new SpeechSynthesisUtterance(text);
-    utterance.rate = 1.03;
+    if (preferredSpeechVoice) utterance.voice = preferredSpeechVoice;
+    utterance.rate = 1.08;
+    utterance.pitch = 1.06;
     let finished = false;
     const finish = () => {
       if (finished) return;
       finished = true;
       cancelAnimationFrame(speechMonitorFrame);
+      if (!interruptionPromoted) stopInterruptionCapture();
       resolve();
     };
     utterance.onstart = () => {
       setConnectionState("speaking", "Speaking · you can interrupt");
+      startInterruptionCapture();
       monitorForSpeechInterruption(() => {
         logActivity("User interrupted the spoken reply");
+        voiceBusy = false;
+        listeningPaused = false;
+        const captured = promoteInterruptionCapture();
         window.speechSynthesis.cancel();
-        setConnectionState("hearing", "Interrupted · keep speaking");
+        setConnectionState("hearing", "I hear you · keep speaking");
         finish();
+        if (!captured) queueMicrotask(() => void beginListeningTurn());
       });
     };
     utterance.onend = finish;
     utterance.onerror = finish;
     window.speechSynthesis.speak(utterance);
   });
+}
+
+function startInterruptionCapture() {
+  stopInterruptionCapture();
+  if (!handsFreeEnabled || !microphoneStream || typeof MediaRecorder === "undefined") return;
+  try {
+    const preferredType = ["audio/webm;codecs=opus", "audio/webm", "audio/ogg;codecs=opus"]
+      .find((type) => MediaRecorder.isTypeSupported(type));
+    interruptionChunks = [];
+    interruptionPromoted = false;
+    interruptionRecorder = new MediaRecorder(microphoneStream, preferredType ? { mimeType: preferredType } : undefined);
+    const recorder = interruptionRecorder;
+    recorder.addEventListener("dataavailable", (event) => {
+      if (!event.data.size) return;
+      if (!interruptionPromoted && recorder !== interruptionRecorder) return;
+      if (interruptionPromoted) localRecordingChunks.push(event.data);
+      else {
+        interruptionChunks.push(event.data);
+        if (interruptionChunks.length > 8) interruptionChunks.shift();
+      }
+    });
+    recorder.start(100);
+  } catch {
+    interruptionRecorder = null;
+    interruptionChunks = [];
+  }
+}
+
+function promoteInterruptionCapture() {
+  if (interruptionRecorder?.state !== "recording") return false;
+  interruptionPromoted = true;
+  localRecorder = interruptionRecorder;
+  localRecordingChunks = [...interruptionChunks];
+  interruptionRecorder = null;
+  interruptionChunks = [];
+  recordingShouldSend = false;
+  recordingStartedAt = performance.now();
+  speechCandidateAt = recordingStartedAt - SPEECH_CONFIRM_MS;
+  speechStartedAt = speechCandidateAt;
+  lastSpeechAt = recordingStartedAt;
+  localRecorder.addEventListener("stop", transcribeLocalRecording, { once: true });
+  localRecorder.requestData();
+  document.body.classList.add("listening", "hearing");
+  monitorVoiceActivity();
+  return true;
+}
+
+function stopInterruptionCapture() {
+  if (interruptionRecorder?.state === "recording") interruptionRecorder.stop();
+  interruptionRecorder = null;
+  interruptionChunks = [];
+  interruptionPromoted = false;
 }
 
 function monitorForSpeechInterruption(onInterrupt) {
@@ -672,10 +742,10 @@ function monitorForSpeechInterruption(onInterrupt) {
       sum += centered * centered;
     }
     const level = Math.sqrt(sum / samples.length);
-    const threshold = Math.max(0.045, noiseFloor * 4.5);
+    const threshold = Math.max(0.024, noiseFloor * 2.8);
     if (level > threshold) {
       if (!candidateAt) candidateAt = now;
-      if (now - candidateAt >= 260) {
+      if (now - candidateAt >= 120) {
         onInterrupt();
         return;
       }
@@ -685,6 +755,27 @@ function monitorForSpeechInterruption(onInterrupt) {
     speechMonitorFrame = requestAnimationFrame(tick);
   };
   speechMonitorFrame = requestAnimationFrame(tick);
+}
+
+function refreshSpeechVoice() {
+  if (!("speechSynthesis" in window)) return;
+  const voices = window.speechSynthesis.getVoices();
+  if (!voices.length) return;
+  const preferredNames = ["jenny", "aria", "zira", "samantha", "susan", "hazel", "female"];
+  preferredSpeechVoice = voices
+    .filter((voice) => /^en[-_]/i.test(voice.lang))
+    .sort((a, b) => voiceScore(b, preferredNames) - voiceScore(a, preferredNames))[0]
+    || voices[0];
+  if (preferredSpeechVoice.name !== announcedSpeechVoice) {
+    announcedSpeechVoice = preferredSpeechVoice.name;
+    logActivity(`Goffy voice selected: ${preferredSpeechVoice.name}`);
+  }
+}
+
+function voiceScore(voice, preferredNames) {
+  const name = voice.name.toLowerCase();
+  const preference = preferredNames.findIndex((candidate) => name.includes(candidate));
+  return (preference < 0 ? 0 : 100 - preference) + (voice.localService ? 10 : 0);
 }
 
 function scrollConversation() {

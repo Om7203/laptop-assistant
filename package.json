@@ -1,6 +1,6 @@
 {
   "name": "laptop-assistant",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "private": true,
   "description": "A local-first, permissioned laptop assistant for Windows.",
   "main": "desktop/main.js",

@@ -6,7 +6,7 @@ $modelDirectory = Join-Path $projectDirectory "models\whistle"
 $engineDirectory = Join-Path $projectDirectory "models\needle-engine"
 $environmentFile = Join-Path $projectDirectory ".env"
 
-Write-Host "Laptop Assistant Whistle setup" -ForegroundColor Cyan
+Write-Host "Goffy Whistle setup" -ForegroundColor Cyan
 Write-Host "This adds the experimental Cactus Whistle speech backend. It remains fully local after setup."
 
 if (-not (Test-Path -LiteralPath $python)) {
@@ -56,5 +56,5 @@ if ($existing -match '(?m)^STT_BACKEND=') {
 }
 [System.IO.File]::WriteAllText($environmentFile, $updated, [System.Text.UTF8Encoding]::new($false))
 
-Write-Host "Setup complete. Restart Laptop Assistant and use Push to talk." -ForegroundColor Green
+Write-Host "Setup complete. Restart Goffy, enable voice, then say Hey Goffy." -ForegroundColor Green
 Write-Host "If Whistle has a problem, the assistant will automatically retry with faster-whisper."

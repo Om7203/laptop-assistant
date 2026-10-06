@@ -16,12 +16,12 @@ let quitting = false;
 let ownsServer = false;
 const hasSingleInstanceLock = app.requestSingleInstanceLock();
 
-app.setName("Laptop Assistant");
+app.setName("Goffy");
 if (!hasSingleInstanceLock) app.quit();
 
 function createWindow() {
   mainWindow = new BrowserWindow({
-    title: "Laptop Assistant",
+    title: "Goffy",
     width: 1180,
     height: 820,
     minWidth: 820,
@@ -40,11 +40,11 @@ function createWindow() {
   mainWindow.loadURL(assistantUrl);
   mainWindow.once("ready-to-show", () => mainWindow.show());
   mainWindow.webContents.on("did-fail-load", (_event, code, description) => {
-    console.error(`Laptop Assistant window failed to load (${code}): ${description}`);
+    console.error(`Goffy window failed to load (${code}): ${description}`);
     app.exit(1);
   });
   mainWindow.webContents.on("render-process-gone", (_event, details) => {
-    console.error(`Laptop Assistant window stopped: ${details.reason}`);
+    console.error(`Goffy window stopped: ${details.reason}`);
     app.exit(1);
   });
   mainWindow.on("close", (event) => {
@@ -80,7 +80,7 @@ function createTray() {
     "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAACXBIWXMAAAsTAAALEwEAmpwYAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAACTSURBVHgBpZKBCYAgEEV/TeAIjuIIbdQIuUGt0CS1gW1iZ2jIVaTnhw+Cvs8/OYDJA4Y8kR3ZR2/kmazxJbpUEfQ/Dm/UG7wVwHkjlQdMFfDdJMFaACebnjJGyDWgcnZu1/lrCrl6NCoEHJBrDwEr5NrT6ko/UV8xdLAC2N49mlc5CylpYh8wCwqrvbBGLoKGvz8Bfq0QPWEUo/EAAAAASUVORK5CYII=",
   );
   tray = new Tray(icon);
-  tray.setToolTip("Laptop Assistant");
+  tray.setToolTip("Goffy");
   tray.setContextMenu(Menu.buildFromTemplate([
     { label: "Open Assistant", click: showWindow },
     { label: `Toggle voice (${voiceShortcut.replace("CommandOrControl", "Ctrl")})`, click: requestPushToTalk },
@@ -108,7 +108,7 @@ async function ensureServer() {
   try {
     const response = await fetch(`${assistantUrl}/api/health`, { signal: AbortSignal.timeout(1000) });
     const health = await response.json();
-    if (response.ok && health.api_version === 6) return;
+    if (response.ok && health.api_version === 7) return;
   } catch {
     // The desktop app owns the server when no compatible instance is already running.
   }
@@ -124,7 +124,7 @@ if (hasSingleInstanceLock) app.whenReady().then(async () => {
   const registered = globalShortcut.register(voiceShortcut, requestPushToTalk);
   if (!registered) console.warn(`Could not register ${voiceShortcut}; it may be used by another application.`);
 }).catch((error) => {
-  console.error("Laptop Assistant desktop startup failed:", error);
+  console.error("Goffy desktop startup failed:", error);
   app.exit(1);
 });
 

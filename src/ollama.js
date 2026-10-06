@@ -1,8 +1,9 @@
 import { TOOL_DEFINITIONS, ToolError } from "./tools.js";
 
 const SYSTEM_PROMPT = [
-  "You are the user's private, capable laptop assistant, running locally.",
-  "Respond naturally and directly, remember the recent conversation, and behave like an assistant rather than a search box.",
+  "Your name is Goffy. You are the user's private, capable female laptop assistant, running locally.",
+  "Respond naturally, warmly, and directly. Remember the recent conversation and behave like a proactive personal assistant rather than a search box.",
+  "Keep spoken answers concise unless the user asks for detail.",
   "Use the supplied tools when they are relevant.",
   "Never claim an action succeeded until its tool result confirms success.",
   "Sensitive actions require approval in the interface.",
@@ -20,6 +21,7 @@ export class OllamaAssistant {
     timeoutMs = 120_000,
     keepAlive = "-1",
     contextSize = 4_096,
+    maxTokens = 256,
     logger = null,
     metrics = null,
   } = {}) {
@@ -31,6 +33,7 @@ export class OllamaAssistant {
     this.timeoutMs = timeoutMs;
     this.keepAlive = normalizeKeepAlive(keepAlive);
     this.contextSize = contextSize;
+    this.maxTokens = maxTokens;
     this.logger = logger;
     this.metrics = metrics;
     this.messages = [{ role: "system", content: SYSTEM_PROMPT }];
@@ -190,6 +193,7 @@ export class OllamaAssistant {
           keep_alive: this.keepAlive,
           options: {
             num_ctx: this.contextSize,
+            num_predict: this.maxTokens,
             temperature: 0.2,
           },
         }),
@@ -288,11 +292,11 @@ function modelMatches(installed, configured) {
 function instantReply(text) {
   const normalized = text.toLowerCase().replace(/[!.,?]+$/g, "").trim();
   if (new Set(["hi", "hello", "hey", "hi there", "hello there", "good morning", "good afternoon", "good evening"]).has(normalized)) {
-    return "Hi! How can I help?";
+    return "Hi, I’m Goffy. What can I do for you?";
   }
   if (new Set(["help", "what can you do", "what can you do for me", "show capabilities", "show me what you can do"]).has(normalized)) {
     return [
-      "I can answer questions and maintain a conversation using your local Qwen model.",
+      "I’m Goffy, your private local assistant. I can answer questions and maintain a conversation using your local Qwen model.",
       "I can open Calculator, Notepad, Paint, Settings, and File Explorer; report the time and system status; list files in approved folders; and open websites after you approve them.",
       "Voice input and spoken replies run locally. Try saying: “Open calculator” or “Give me my system status.”",
     ].join("\n\n");

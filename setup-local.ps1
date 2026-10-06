@@ -37,7 +37,7 @@ $form.FormBorderStyle = "FixedDialog"
 $form.MaximizeBox = $false
 
 $intro = New-Object Windows.Forms.Label
-$intro.Text = "Connect Laptop Assistant to Ollama on this PC or your Linux machine. No paid API key is needed."
+$intro.Text = "Connect Goffy to Ollama on this PC or your Linux machine. No paid API key is needed."
 $intro.Location = New-Object Drawing.Point(22, 20)
 $intro.Size = New-Object Drawing.Size(565, 42)
 $form.Controls.Add($intro)
@@ -125,7 +125,7 @@ $saveButton.Add_Click({
 
         $lines = $settings.GetEnumerator() | ForEach-Object { "$($_.Key)=$($_.Value)" }
         [IO.File]::WriteAllLines($environmentFile, $lines, [Text.UTF8Encoding]::new($false))
-        [Windows.Forms.MessageBox]::Show("Saved. Close and restart Laptop Assistant.", "Local AI", "OK", "Information") | Out-Null
+        [Windows.Forms.MessageBox]::Show("Saved. Close and restart Goffy.", "Local AI", "OK", "Information") | Out-Null
         $form.DialogResult = [Windows.Forms.DialogResult]::OK
         $form.Close()
     }

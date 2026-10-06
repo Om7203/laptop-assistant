@@ -14,7 +14,7 @@ const sourceDirectory = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(sourceDirectory, "..");
 loadEnv(path.join(projectRoot, ".env"));
 const logger = createLogger();
-const metrics = new AssistantMetrics({ version: "0.6.0" });
+const metrics = new AssistantMetrics({ version: "0.7.0" });
 const enableOpenAIRealtime = process.env.ENABLE_OPENAI_REALTIME === "true";
 const openaiApiKey = enableOpenAIRealtime ? resolveOpenAIKey({ projectRoot }) : "";
 
@@ -32,6 +32,7 @@ const localAssistant = new OllamaAssistant({
   model: process.env.OLLAMA_MODEL || "qwen3:4b-instruct-2507-q4_K_M",
   keepAlive: process.env.OLLAMA_KEEP_ALIVE || "-1",
   contextSize: numberFromEnv(process.env.OLLAMA_CONTEXT_SIZE, 4_096),
+  maxTokens: numberFromEnv(process.env.OLLAMA_MAX_TOKENS, 256),
   logger,
   metrics,
 });
@@ -39,7 +40,7 @@ const localSpeech = new LocalSpeechRecognition({
   projectRoot,
   backend: process.env.STT_BACKEND || "faster-whisper",
   whisperModel: process.env.WHISPER_MODEL || "base.en",
-  keywords: parseKeywords(process.env.STT_KEYWORDS || "Laptop Assistant,Ollama,Qwen,Notepad,Calculator"),
+  keywords: parseKeywords(process.env.STT_KEYWORDS || "Goffy,Goofy,Hey Goffy,Ollama,Qwen,Notepad,Calculator"),
   logger,
   metrics,
 });
@@ -70,7 +71,7 @@ const server = http.createServer(async (request, response) => {
     response.setHeader("X-Request-ID", requestId);
 
     if (request.method === "GET" && request.url === "/api/health/live") {
-      return json(response, 200, { status: "alive", uptime_seconds: Math.round(process.uptime()), version: "0.6.0" });
+      return json(response, 200, { status: "alive", uptime_seconds: Math.round(process.uptime()), version: "0.7.0" });
     }
 
     if (request.method === "GET" && request.url === "/api/health/ready") {
@@ -96,7 +97,7 @@ const server = http.createServer(async (request, response) => {
     if (request.method === "GET" && request.url === "/api/health") {
       return json(response, 200, {
         status: "ok",
-        api_version: 6,
+        api_version: 7,
         backend: "ollama",
         ollama_model: localAssistant.model,
         realtime_configured: enableOpenAIRealtime && Boolean(openaiApiKey),

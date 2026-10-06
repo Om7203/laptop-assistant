@@ -5,7 +5,7 @@ function Read-ApiKeyFromDialog {
     Add-Type -AssemblyName System.Drawing
 
     $form = New-Object System.Windows.Forms.Form
-    $form.Text = "Laptop Assistant setup"
+    $form.Text = "Goffy setup"
     $form.StartPosition = "CenterScreen"
     $form.ClientSize = New-Object System.Drawing.Size(520, 170)
     $form.FormBorderStyle = "FixedDialog"
@@ -77,7 +77,7 @@ $projectDirectory = Split-Path -Parent $MyInvocation.MyCommand.Path
 $environmentFile = Join-Path $projectDirectory ".env"
 $credentialFile = Join-Path $projectDirectory "config\openai-key.dpapi"
 
-Write-Host "Laptop Assistant setup" -ForegroundColor Cyan
+Write-Host "Goffy setup" -ForegroundColor Cyan
 Write-Host "Your API key will be encrypted for your Windows account. Never paste it into chat or commit it."
 
 if (Test-Path -LiteralPath $credentialFile) {

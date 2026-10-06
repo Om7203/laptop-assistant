@@ -78,7 +78,7 @@ function Open-AssistantWindow {
 
 $existingHealth = Get-AssistantHealth
 Start-LocalOllamaIfNeeded
-if ($existingHealth -and $existingHealth.api_version -eq 6) {
+if ($existingHealth -and $existingHealth.api_version -eq 7) {
     Open-AssistantWindow
     exit 0
 }

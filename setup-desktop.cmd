@@ -2,7 +2,7 @@
 setlocal
 cd /d "%~dp0"
 
-echo Installing the Laptop Assistant desktop shell...
+echo Installing the Goffy desktop shell...
 call npm install
 if errorlevel 1 (
   echo.

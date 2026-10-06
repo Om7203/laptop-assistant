@@ -15,12 +15,13 @@ test("does not confuse ordinary requests with lifecycle controls", () => {
 });
 
 test("extracts a command following a local wake phrase", () => {
-  assert.deepEqual(extractWakeCommand("Hey Assistant, open calculator"), {
+  assert.deepEqual(extractWakeCommand("Hey Goffy, open calculator"), {
     detected: true,
     command: "open calculator",
   });
-  assert.deepEqual(extractWakeCommand("Okay assistant"), { detected: true, command: "" });
-  assert.deepEqual(extractWakeCommand("Hey laptop assistant, what time is it?"), {
+  assert.deepEqual(extractWakeCommand("Okay Goffy"), { detected: true, command: "" });
+  assert.deepEqual(extractWakeCommand("Hey Goofy, open notepad"), { detected: true, command: "open notepad" });
+  assert.deepEqual(extractWakeCommand("Goffy, what time is it?"), {
     detected: true,
     command: "what time is it",
   });

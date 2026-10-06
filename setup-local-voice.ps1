@@ -3,7 +3,7 @@ $projectDirectory = Split-Path -Parent $MyInvocation.MyCommand.Path
 $venvDirectory = Join-Path $projectDirectory ".venv-voice"
 $python = Join-Path $venvDirectory "Scripts\python.exe"
 
-Write-Host "Laptop Assistant local voice setup" -ForegroundColor Cyan
+Write-Host "Goffy local voice setup" -ForegroundColor Cyan
 Write-Host "This installs faster-whisper in a private project environment and downloads the base English speech model."
 
 if (-not (Test-Path -LiteralPath $python)) {
@@ -42,4 +42,4 @@ WhisperModel(
 print("Local speech model is ready.")
 '@ | & $python -
 
-Write-Host "Setup complete. Restart Laptop Assistant, then use Push to talk." -ForegroundColor Green
+Write-Host "Setup complete. Restart Goffy, enable voice, then say Hey Goffy." -ForegroundColor Green

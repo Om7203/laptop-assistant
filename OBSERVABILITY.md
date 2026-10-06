@@ -1,6 +1,6 @@
 # Observability and operations
 
-Laptop Assistant treats observability as part of the product. Telemetry is local by default and designed to diagnose failures without collecting conversation content.
+Goffy treats observability as part of the product. Telemetry is local by default and designed to diagnose failures without collecting conversation content.
 
 ## Operational endpoints
 

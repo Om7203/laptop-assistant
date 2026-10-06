@@ -59,17 +59,17 @@ function Get-ListenerProcess {
 }
 
 $existingHealth = Get-AssistantHealth
-if ($existingHealth -and $existingHealth.api_version -ne 6) {
+if ($existingHealth -and $existingHealth.api_version -ne 7) {
     $listenerProcess = Get-ListenerProcess
     if ($listenerProcess -and $listenerProcess.ProcessName -eq "node") {
-        Write-Host "Stopping an older Laptop Assistant server..."
+        Write-Host "Stopping an older Goffy server..."
         Stop-Process -Id $listenerProcess.Id -Force
         for ($attempt = 0; $attempt -lt 20; $attempt++) {
             Start-Sleep -Milliseconds 100
             if (-not (Get-AssistantHealth)) { break }
         }
     } elseif ($listenerProcess -and $listenerProcess.ProcessName -eq "electron") {
-        Write-Host "Stopping the older Laptop Assistant desktop version..."
+        Write-Host "Stopping the older Goffy desktop version..."
         Get-Process electron -ErrorAction SilentlyContinue |
             Where-Object { $_.Path -eq $electron } |
             Stop-Process -Force
@@ -96,7 +96,7 @@ for ($attempt = 0; $attempt -lt 40; $attempt++) {
     Start-Sleep -Milliseconds 250
     $desktopProcess.Refresh()
     $currentHealth = Get-AssistantHealth
-    if ($desktopProcess.HasExited -or ($currentHealth -and $currentHealth.api_version -eq 6)) { break }
+    if ($desktopProcess.HasExited -or ($currentHealth -and $currentHealth.api_version -eq 7)) { break }
 }
 $fatalOutput = if (Test-Path -LiteralPath $errorLog) { Get-Content -LiteralPath $errorLog -Raw } else { "" }
 if ($desktopProcess.HasExited -or $fatalOutput -match 'FATAL:') {
@@ -109,8 +109,8 @@ if ($desktopProcess.HasExited -or $fatalOutput -match 'FATAL:') {
 }
 
 $health = Get-AssistantHealth
-if (-not $health -or $health.api_version -ne 6) {
+if (-not $health -or $health.api_version -ne 7) {
     throw "The desktop process started, but its local server did not become ready. See $errorLog"
 }
 
-Write-Host "Laptop Assistant is running. You can reopen it from the system tray." -ForegroundColor Green
+Write-Host "Goffy is running. You can reopen her from the system tray." -ForegroundColor Green
