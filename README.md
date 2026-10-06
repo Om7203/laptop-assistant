@@ -57,14 +57,14 @@ Whistle is experimental in this project. If it cannot start or transcribe a reco
 ## Run the native desktop version
 
 1. Complete the Ollama and local voice setup above.
-2. Double-click `setup-desktop.cmd` once. This installs the pinned Electron desktop runtime inside the project.
+2. Double-click `setup-desktop.cmd` once and approve its one-time Windows administrator prompt. This installs the pinned Electron desktop runtime and grants its secure sandbox read access.
 3. Double-click `start-desktop.cmd` whenever you want to run the assistant.
 4. Close the window to keep the assistant available in the Windows system tray. Use the tray menu to reopen or quit it.
 5. Press `Ctrl+Shift+Space` anywhere to turn hands-free listening on or off.
 
 The desktop window runs the same local interface and permission-gated tools. Node integration is disabled in the window, browsing away from the local interface is blocked, and microphone access is allowed only for the local assistant origin. The original `start-assistant.cmd` browser launcher remains available.
 
-The desktop setup also grants Electron's runtime the Windows read permission required by its secure application sandbox. If Windows rejects that permission, the setup window explains that it must be run once with **Run as administrator**. Startup errors are retained as timestamped `logs/desktop-error-*.log` files instead of disappearing with the launcher window.
+The desktop setup grants Electron's runtime the Windows read permission required by its secure application sandbox. It requests administrator permission automatically; if the UAC prompt is declined, run `setup-desktop.cmd` again and approve it. Startup errors are retained as timestamped `logs/desktop-error-*.log` files instead of disappearing with the launcher window.
 
 When Google Chrome is installed, the launcher opens the assistant in a standalone app-style window without normal browser tabs or an address bar. It falls back to the default browser otherwise.
 

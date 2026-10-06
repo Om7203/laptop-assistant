@@ -2,6 +2,14 @@
 setlocal
 cd /d "%~dp0"
 
+net session >nul 2>&1
+if not %errorlevel%==0 (
+  echo Windows administrator permission is required once for Electron's secure sandbox.
+  echo A UAC confirmation will appear now.
+  powershell.exe -NoProfile -Command "Start-Process -FilePath '%~f0' -Verb RunAs"
+  exit /b 0
+)
+
 echo Installing the Goffy desktop shell...
 call npm install
 if errorlevel 1 (
