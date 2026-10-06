@@ -14,7 +14,7 @@ const sourceDirectory = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(sourceDirectory, "..");
 loadEnv(path.join(projectRoot, ".env"));
 const logger = createLogger();
-const metrics = new AssistantMetrics({ version: "0.7.0" });
+const metrics = new AssistantMetrics({ version: "0.7.1" });
 const enableOpenAIRealtime = process.env.ENABLE_OPENAI_REALTIME === "true";
 const openaiApiKey = enableOpenAIRealtime ? resolveOpenAIKey({ projectRoot }) : "";
 
@@ -71,7 +71,7 @@ const server = http.createServer(async (request, response) => {
     response.setHeader("X-Request-ID", requestId);
 
     if (request.method === "GET" && request.url === "/api/health/live") {
-      return json(response, 200, { status: "alive", uptime_seconds: Math.round(process.uptime()), version: "0.7.0" });
+      return json(response, 200, { status: "alive", uptime_seconds: Math.round(process.uptime()), version: "0.7.1" });
     }
 
     if (request.method === "GET" && request.url === "/api/health/ready") {
@@ -97,7 +97,7 @@ const server = http.createServer(async (request, response) => {
     if (request.method === "GET" && request.url === "/api/health") {
       return json(response, 200, {
         status: "ok",
-        api_version: 7,
+        api_version: 8,
         backend: "ollama",
         ollama_model: localAssistant.model,
         realtime_configured: enableOpenAIRealtime && Boolean(openaiApiKey),

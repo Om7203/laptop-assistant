@@ -59,7 +59,7 @@ function Get-ListenerProcess {
 }
 
 $existingHealth = Get-AssistantHealth
-if ($existingHealth -and $existingHealth.api_version -ne 7) {
+if ($existingHealth -and $existingHealth.api_version -ne 8) {
     $listenerProcess = Get-ListenerProcess
     if ($listenerProcess -and $listenerProcess.ProcessName -eq "node") {
         Write-Host "Stopping an older Goffy server..."
@@ -96,7 +96,7 @@ for ($attempt = 0; $attempt -lt 40; $attempt++) {
     Start-Sleep -Milliseconds 250
     $desktopProcess.Refresh()
     $currentHealth = Get-AssistantHealth
-    if ($desktopProcess.HasExited -or ($currentHealth -and $currentHealth.api_version -eq 7)) { break }
+    if ($desktopProcess.HasExited -or ($currentHealth -and $currentHealth.api_version -eq 8)) { break }
 }
 $fatalOutput = if (Test-Path -LiteralPath $errorLog) { Get-Content -LiteralPath $errorLog -Raw } else { "" }
 if ($desktopProcess.HasExited -or $fatalOutput -match 'FATAL:') {
@@ -109,7 +109,7 @@ if ($desktopProcess.HasExited -or $fatalOutput -match 'FATAL:') {
 }
 
 $health = Get-AssistantHealth
-if (-not $health -or $health.api_version -ne 7) {
+if (-not $health -or $health.api_version -ne 8) {
     throw "The desktop process started, but its local server did not become ready. See $errorLog"
 }
 

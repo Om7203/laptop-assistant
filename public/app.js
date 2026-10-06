@@ -24,9 +24,6 @@ let announcedSpeechVoice = "";
 let localVoiceInstalled = false;
 let localRecorder;
 let localRecordingChunks = [];
-let interruptionRecorder;
-let interruptionChunks = [];
-let interruptionPromoted = false;
 let localStatusText = "Local AI ready";
 let handsFreeEnabled = false;
 let voiceAwake = false;
@@ -44,9 +41,9 @@ let speechStartedAt = 0;
 let lastSpeechAt = 0;
 let noiseFloor = 0.006;
 
-const SILENCE_TO_SEND_MS = 700;
-const SPEECH_CONFIRM_MS = 100;
-const MIN_SPEECH_MS = 180;
+const SILENCE_TO_SEND_MS = 850;
+const SPEECH_CONFIRM_MS = 120;
+const MIN_SPEECH_MS = 220;
 const MAX_RECORDING_MS = 30_000;
 
 checkLocalBackend();
@@ -135,7 +132,7 @@ async function startHandsFreeListening() {
     voiceAwake = false;
     if (!microphoneStream) {
       microphoneStream = await navigator.mediaDevices.getUserMedia({
-        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 },
+        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: false, channelCount: 1 },
       });
       audioContext = new AudioContext();
       analyser = audioContext.createAnalyser();
@@ -238,7 +235,6 @@ function stopHandsFreeListening() {
   recordingShouldSend = false;
   cancelAnimationFrame(vadFrame);
   cancelAnimationFrame(speechMonitorFrame);
-  stopInterruptionCapture();
   if (localRecorder?.state === "recording") localRecorder.stop();
   microphoneStream?.getTracks().forEach((track) => track.stop());
   microphoneSource?.disconnect();
@@ -259,7 +255,6 @@ async function transcribeLocalRecording() {
   const type = localRecorder?.mimeType || localRecordingChunks[0]?.type || "audio/webm";
   const recording = new Blob(localRecordingChunks, { type });
   localRecorder = null;
-  interruptionPromoted = false;
   localRecordingChunks = [];
   document.body.classList.remove("listening");
 
@@ -653,21 +648,18 @@ function speakReply(text) {
       if (finished) return;
       finished = true;
       cancelAnimationFrame(speechMonitorFrame);
-      if (!interruptionPromoted) stopInterruptionCapture();
       resolve();
     };
     utterance.onstart = () => {
       setConnectionState("speaking", "Speaking · you can interrupt");
-      startInterruptionCapture();
       monitorForSpeechInterruption(() => {
         logActivity("User interrupted the spoken reply");
         voiceBusy = false;
         listeningPaused = false;
-        const captured = promoteInterruptionCapture();
         window.speechSynthesis.cancel();
         setConnectionState("hearing", "I hear you · keep speaking");
         finish();
-        if (!captured) queueMicrotask(() => void beginListeningTurn());
+        queueMicrotask(() => void beginListeningTurn());
       });
     };
     utterance.onend = finish;
@@ -676,63 +668,13 @@ function speakReply(text) {
   });
 }
 
-function startInterruptionCapture() {
-  stopInterruptionCapture();
-  if (!handsFreeEnabled || !microphoneStream || typeof MediaRecorder === "undefined") return;
-  try {
-    const preferredType = ["audio/webm;codecs=opus", "audio/webm", "audio/ogg;codecs=opus"]
-      .find((type) => MediaRecorder.isTypeSupported(type));
-    interruptionChunks = [];
-    interruptionPromoted = false;
-    interruptionRecorder = new MediaRecorder(microphoneStream, preferredType ? { mimeType: preferredType } : undefined);
-    const recorder = interruptionRecorder;
-    recorder.addEventListener("dataavailable", (event) => {
-      if (!event.data.size) return;
-      if (!interruptionPromoted && recorder !== interruptionRecorder) return;
-      if (interruptionPromoted) localRecordingChunks.push(event.data);
-      else {
-        interruptionChunks.push(event.data);
-        if (interruptionChunks.length > 8) interruptionChunks.shift();
-      }
-    });
-    recorder.start(100);
-  } catch {
-    interruptionRecorder = null;
-    interruptionChunks = [];
-  }
-}
-
-function promoteInterruptionCapture() {
-  if (interruptionRecorder?.state !== "recording") return false;
-  interruptionPromoted = true;
-  localRecorder = interruptionRecorder;
-  localRecordingChunks = [...interruptionChunks];
-  interruptionRecorder = null;
-  interruptionChunks = [];
-  recordingShouldSend = false;
-  recordingStartedAt = performance.now();
-  speechCandidateAt = recordingStartedAt - SPEECH_CONFIRM_MS;
-  speechStartedAt = speechCandidateAt;
-  lastSpeechAt = recordingStartedAt;
-  localRecorder.addEventListener("stop", transcribeLocalRecording, { once: true });
-  localRecorder.requestData();
-  document.body.classList.add("listening", "hearing");
-  monitorVoiceActivity();
-  return true;
-}
-
-function stopInterruptionCapture() {
-  if (interruptionRecorder?.state === "recording") interruptionRecorder.stop();
-  interruptionRecorder = null;
-  interruptionChunks = [];
-  interruptionPromoted = false;
-}
-
 function monitorForSpeechInterruption(onInterrupt) {
   cancelAnimationFrame(speechMonitorFrame);
   if (!handsFreeEnabled || !analyser) return;
   const samples = new Uint8Array(analyser.frequencyBinCount);
+  const startedAt = performance.now();
   let candidateAt = 0;
+  let playbackFloor = noiseFloor;
   const tick = (now) => {
     if (!handsFreeEnabled || !window.speechSynthesis.speaking) return;
     analyser.getByteTimeDomainData(samples);
@@ -742,10 +684,15 @@ function monitorForSpeechInterruption(onInterrupt) {
       sum += centered * centered;
     }
     const level = Math.sqrt(sum / samples.length);
-    const threshold = Math.max(0.024, noiseFloor * 2.8);
+    if (now - startedAt < 350) {
+      playbackFloor = playbackFloor * 0.8 + level * 0.2;
+      speechMonitorFrame = requestAnimationFrame(tick);
+      return;
+    }
+    const threshold = Math.max(0.032, noiseFloor * 3.2, playbackFloor * 1.8);
     if (level > threshold) {
       if (!candidateAt) candidateAt = now;
-      if (now - candidateAt >= 120) {
+      if (now - candidateAt >= 180) {
         onInterrupt();
         return;
       }
